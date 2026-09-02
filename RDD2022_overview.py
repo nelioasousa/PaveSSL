@@ -49,12 +49,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "data",
-        type=str, default="RDD2022/", nargs='?',
+        type=str, default="data/RDD2022/", nargs='?',
         help="Path to the RDD2022 dataset relative to the script parent folder.",
     )
     parser.add_argument(
         "save_dir",
-        type=str, default="RDD2022_overview/", nargs='?',
+        type=str, default="data/RDD2022_overview/", nargs='?',
         help="Where to save the overview results relative to the script parent folder.",
     )
     parser.add_argument(

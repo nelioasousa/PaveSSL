@@ -233,12 +233,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "data",
-        type=str, default="RDD2022/", nargs='?',
+        type=str, default="data/RDD2022/", nargs='?',
         help="Path to the RDD2022 dataset relative to the script parent folder.",
     )
     parser.add_argument(
         "save_dir",
-        type=str, default="RDD2022_proc/", nargs='?',
+        type=str, default="data/RDD2022_proc/", nargs='?',
         help="Where to save the processed data relative to the script parent folder.",
     )
     

@@ -1,6 +1,5 @@
 # Datasets
-RDD2022*/
-Potholes_dataset*/
+data/
 
 # Python
 venv/
