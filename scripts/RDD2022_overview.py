@@ -50,12 +50,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "data",
         type=str, default="data/RDD2022/", nargs='?',
-        help="Path to the RDD2022 dataset relative to the script parent folder.",
+        help="Path to the RDD2022 dataset relative to the project's root.",
     )
     parser.add_argument(
         "save_dir",
         type=str, default="data/RDD2022_overview/", nargs='?',
-        help="Where to save the overview results relative to the script parent folder.",
+        help="Where to save the overview results relative to the project's root.",
     )
     parser.add_argument(
         "-n", "--num_samples",
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     data: str = args.data
     save_dir: str = args.save_dir
     num_samples: int = args.num_samples
-    base_dir = Path(__file__).absolute().resolve().parent
+    base_dir = Path(__file__).absolute().resolve().parents[1]
     data_path = base_dir / data.removeprefix("/") # Input
     save_path = base_dir / save_dir.removeprefix("/") # Output
 

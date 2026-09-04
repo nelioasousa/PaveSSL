@@ -234,12 +234,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "data",
         type=str, default="data/RDD2022/", nargs='?',
-        help="Path to the RDD2022 dataset relative to the script parent folder.",
+        help="Path to the RDD2022 dataset relative to the project's root.",
     )
     parser.add_argument(
         "save_dir",
         type=str, default="data/RDD2022_proc/", nargs='?',
-        help="Where to save the processed data relative to the script parent folder.",
+        help="Where to save the processed data relative to the project's root.",
     )
     
     args = parser.parse_args()
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     save_dir: str = args.save_dir
     train_prop: float = args.train_proportion
     valid_prop: float = args.valid_proportion
-    base_dir = Path(__file__).absolute().resolve().parent
+    base_dir = Path(__file__).absolute().resolve().parents[1]
     data_path = base_dir / data.removeprefix("/")
     save_path = base_dir / save_dir.removeprefix("/")
 
