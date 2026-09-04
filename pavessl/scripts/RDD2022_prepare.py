@@ -1,12 +1,12 @@
+import random
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from math import ceil, floor
 from pathlib import Path
-from typing import Optional, cast
-import xml.etree.ElementTree as ET
-import random
+from typing import cast
+
 from PIL import Image
 from tqdm import tqdm
-
 
 random.seed(42)
 
@@ -40,23 +40,28 @@ type ImgAnnPair = tuple[Path, Path]
 
 # To cut Norway images
 def _cut_image_and_fix_bboxes(
-    img: Image.Image, bboxes: list[BBox],
+    img: Image.Image,
+    bboxes: list[BBox],
 ) -> tuple[Image.Image, list[BBox]]:
-    
+
     img_height = img.size[1]
     diff = img_height - NORWAY_TARGET_SIZE
     cut_bboxes: list[BBox] = []
-    for (class_name, xmin, ymin, xmax, ymax) in bboxes:
+    for class_name, xmin, ymin, xmax, ymax in bboxes:
         box_width = xmax - xmin
         box_remain = img_height - xmin
         # Discard bbox if remaining width is small
         if box_remain < (box_width / 16):
             continue
-        cut_bboxes.append((
-            class_name,
-            xmin, ymin - diff,
-            min(img_height, xmax), ymax - diff,
-        ))
+        cut_bboxes.append(
+            (
+                class_name,
+                xmin,
+                ymin - diff,
+                min(img_height, xmax),
+                ymax - diff,
+            )
+        )
     return img.crop((0, diff, NORWAY_TARGET_SIZE, img_height)), cut_bboxes
 
 
@@ -77,17 +82,18 @@ def _get_bboxes_from_xml_label(label_path: Path) -> list[BBox]:
 
 
 def _save_bboxes_to_annotation(
-    bboxes: list[BBox], ann_save_path: Path,
+    bboxes: list[BBox],
+    ann_save_path: Path,
 ):
     label_lines = [
-        "%d %04d %04d %04d %04d\n" %(
-            CLASS_INDEXES[cls_name], xmin, ymin, xmax, ymax
+        "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
+            CLASS_INDEXES[cls_name],
+            *coords,
         )
-        for (cls_name, xmin, ymin, xmax, ymax) in bboxes
+        for cls_name, *coords in bboxes
     ]
     with ann_save_path.open("w") as label_file:
         label_file.writelines(label_lines)
-    return
 
 
 def _get_train_test_samples(
@@ -112,7 +118,9 @@ def _get_stratified_splits(
     valid_size: int,
     test_size: int,
 ) -> tuple[list[ImgAnnPair], list[ImgAnnPair], list[ImgAnnPair]]:
-    pairs_by_class_group: dict[tuple[int, ...], list[ImgAnnPair]] = defaultdict(list)
+    pairs_by_class_group: dict[tuple[int, ...], list[ImgAnnPair]] = defaultdict(
+        list
+    )
     for img_path, label_path in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(label_path)
         class_group = tuple(sorted(CLASS_INDEXES[name] for name, *_ in bboxes))
@@ -139,7 +147,7 @@ def _train_valid_test_split(
     train_proportion: float,
     valid_proportion: float,
 ) -> tuple[
-    list[tuple[Path, Optional[Path]]],
+    list[tuple[Path, Path | None]],
     list[ImgAnnPair],
     list[ImgAnnPair],
 ]:
@@ -151,16 +159,18 @@ def _train_valid_test_split(
         raise ValueError("Invalid proportions")
     train_samples, test_samples = _get_train_test_samples(country_folder)
     total_samples = len(train_samples) + len(test_samples)
-    test_size = ceil(total_samples * (1.0 - train_proportion - valid_proportion))
+    test_size = ceil(
+        total_samples * (1.0 - train_proportion - valid_proportion)
+    )
     valid_size = floor(total_samples * valid_proportion)
     train_size = total_samples - test_size - valid_size
-    train_split: list[tuple[Path, Optional[Path]]] = []
+    train_split: list[tuple[Path, Path | None]] = []
     train_split.extend([(img_path, None) for img_path in test_samples])
     train_size -= len(test_samples)
     if train_size < 0:
         raise ValueError(
-            "Train size must be at least %d (proportion: %.2f)" %(
-                len(test_samples), len(test_samples) / total_samples,
+            "Train size must be at least {} (proportion: {:.2f})".format(
+                len(test_samples), len(test_samples) / total_samples
             )
         )
     inc_train, valid_split, test_split = _get_stratified_splits(
@@ -180,7 +190,6 @@ def _prepare_dst_folder(dest_folder: Path):
         split_folder.mkdir(exist_ok=True)
         (split_folder / "images").mkdir(exist_ok=True)
         (split_folder / "annotations").mkdir(exist_ok=True)
-    return
 
 
 def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
@@ -189,12 +198,15 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
         dst_folder = save_dir / country_folder.name
         _prepare_dst_folder(dst_folder)
         train_split, valid_split, test_split = _train_valid_test_split(
-            country_folder, train_prop, valid_prop,
+            country_folder,
+            train_prop,
+            valid_prop,
         )
         for img_path, label_path in train_split:
             img = cast(Image.Image, Image.open(img_path))
             bboxes = (
-                [] if label_path is None
+                []
+                if label_path is None
                 else _get_bboxes_from_xml_label(label_path)
             )
             if country_folder.name == "Norway":
@@ -211,50 +223,60 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
                 if country_folder.name == "Norway":
                     img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
                 img.save(dst_folder / f"{split}/images/{img_path.name}")
-                ann_dst = dst_folder / f"{split}/annotations/{label_path.stem}.txt"
+                ann_dst = (
+                    dst_folder / f"{split}/annotations/{label_path.stem}.txt"
+                )
                 _save_bboxes_to_annotation(bboxes, ann_dst)
-    return
 
 
 if __name__ == "__main__":
-    import sys
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-tp", "--train_proportion",
-        type=float, default=0.75,
+        "-tp",
+        "--train_proportion",
+        type=float,
+        default=0.75,
         help="Proportion of the train split.",
     )
     parser.add_argument(
-        "-vp", "--valid_proportion",
-        type=float, default=0.1,
+        "-vp",
+        "--valid_proportion",
+        type=float,
+        default=0.1,
         help="Proportion of the validation split.",
     )
     parser.add_argument(
         "data",
-        type=str, default="data/RDD2022", nargs='?',
-        help="Path to the RDD2022 dataset relative to the project's root.",
+        type=Path,
+        default="data/RDD2022",
+        nargs="?",
+        help="Path to the RDD2022 dataset.",
     )
     parser.add_argument(
         "save_dir",
-        type=str, default="data/RDD2022_proc", nargs='?',
-        help="Where to save the processed data relative to the project's root.",
+        type=Path,
+        default="data/RDD2022_proc",
+        nargs="?",
+        help="Where to save the prepared dataset.",
     )
-    
+
     args = parser.parse_args()
 
-    data: str = args.data
-    save_dir: str = args.save_dir
+    data: Path = args.data
+    save_dir: Path = args.save_dir
     train_prop: float = args.train_proportion
     valid_prop: float = args.valid_proportion
-    data_path = Path(data).absolute().resolve()
-    save_path = Path(save_dir).absolute().resolve()
+    data_path = data.absolute().resolve()
+    save_path = save_dir.absolute().resolve()
 
     try:
         main(data_path, train_prop, valid_prop, save_path)
         sys.exit(0)
     except Exception:
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
