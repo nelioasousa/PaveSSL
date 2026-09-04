@@ -1,3 +1,6 @@
 pillow
 tqdm
+
+# Type hints
+mypy
 types-tqdm
