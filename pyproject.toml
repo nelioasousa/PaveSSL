@@ -1,3 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "pavessl"
+authors = [{name = "nelioasousa"}]
+description = "Pre-training vision models using SSL"
+version = "0.1.0"
+requires-python = ">=3.12"
+readme = "README.md"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+dev = ["mypy", "ruff"]
+
+[project.urls]
+Source = "https://github.com/nelioasousa/PaveSSL"
+
+
+[tool]
+
+[tool.setuptools]
+packages = ["pavessl"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements-base.in"]}
+
 [tool.ruff]
 line-length = 80
 

@@ -1,6 +1,4 @@
 pillow
+torch
+torchvision
 tqdm
-
-# Dev
-ruff
-mypy
