@@ -13,7 +13,7 @@ readme = "README.md"
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-dev = ["mypy", "ruff"]
+dev = ["ruff"]
 
 [project.urls]
 Source = "https://github.com/nelioasousa/PaveSSL"
