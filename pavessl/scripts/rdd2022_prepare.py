@@ -26,10 +26,9 @@ CLASS_NAMES_MAP = {
     "D44": "blur_white_line",
 }
 
-CLASS_INDEXES = {
-    class_name: i
-    for i, class_name in enumerate(sorted(CLASS_NAMES_MAP.values()))
-}
+CLASSES = sorted(CLASS_NAMES_MAP.values())
+
+CLASS_INDEXES = {class_name: i for i, class_name in enumerate(CLASSES)}
 
 NORWAY_TARGET_SIZE = 2000
 
@@ -227,6 +226,7 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
                     dst_folder / f"{split}/annotations/{label_path.stem}.txt"
                 )
                 _save_bboxes_to_annotation(bboxes, ann_dst)
+    (save_dir / "classes.txt").write_text("\n".join(CLASSES))
 
 
 if __name__ == "__main__":
