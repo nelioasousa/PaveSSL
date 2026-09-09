@@ -10,7 +10,7 @@ from torchvision.transforms.v2 import Transform, query_size
 import torchvision.transforms.v2 as transforms_v2
 import torchvision.transforms.v2.functional as F
 
-from utils import load_bboxes
+from pavessl.utils import load_bboxes
 
 
 class RDD2022(Dataset):
@@ -95,7 +95,8 @@ class RDD2022(Dataset):
         country, local_index = self._compute_from_global_index(index)
         image_name = self.images[country][local_index]
         split_dir = self.base / f"{country}/{self.split}"
-        image = F.to_image(Image.open(split_dir / f"images/{image_name}"))
+        image = Image.open(split_dir / f"images/{image_name}")
+        image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
             if self.transform is None:
                 return image
@@ -128,63 +129,103 @@ class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
         return params
 
 
-def get_augmentations(
-    global_size: int = 224,
-    global_scale: tuple[float, float] = (0.75, 1.0),
-    local_size: int = 96,
-    local_scale: tuple[float, float] = (0.05, 0.4),
-):
-    # Random cropping
-    global_crop = transforms_v2.RandomResizedCrop(
-        size=global_size,
-        scale=global_scale,
-    )
-    local_crop = BottomRandomResizedCrop(size=local_size, scale=local_scale)
-    # Geometric transformations
-    geometric_transfs = [
-        transforms_v2.RandomHorizontalFlip(p=0.5),
-        transforms_v2.RandomApply(
-            transforms_v2.RandomRotation(degrees=10, expand=False),
-            p=0.3,
-        ),
-    ]
-    # Photometric transformations
-    photometric_transfs = [
-        transforms_v2.RandomApply(
-            transforms_v2.ColorJitter(
-                brightness=0.4,
-                contrast=0.4,
-                saturation=0.2,
-                hue=0.1,
+class SSLMultiviewTransform(torch.nn.Module):
+    def __init__(
+        self,
+        global_size: int,
+        global_scale: tuple[float, float],
+        local_size: int,
+        local_scale: tuple[float, float],
+        num_local_views: int = 2,
+    ):
+        super().__init__()
+        self.global_size = global_size
+        self.local_size = local_size
+        self.num_local_views = num_local_views
+        augs = self.get_multiview_augmentations(
+            global_size, global_scale, local_size, local_scale,
+        )
+        self.teacher_global = augs[0]
+        self.student_global = augs[1]
+        self.student_local = augs[2]
+
+    def forward(self, img, label=None):
+        views = [self.teacher_global(img), self.student_global(img)]
+        views.extend([
+            self.student_local(img) for _ in range(self.num_local_views)
+        ])
+        return views, label
+
+    @staticmethod
+    def get_multiview_augmentations(
+        global_size: int = 224,
+        global_scale: tuple[float, float] = (0.75, 1.0),
+        local_size: int = 96,
+        local_scale: tuple[float, float] = (0.05, 0.4),
+    ):
+        # Random cropping
+        global_crop = transforms_v2.RandomResizedCrop(
+            size=global_size,
+            scale=global_scale,
+        )
+        local_crop = BottomRandomResizedCrop(size=local_size, scale=local_scale)
+        # Geometric transformations
+        geometric_transfs = [
+            transforms_v2.RandomHorizontalFlip(p=0.5),
+            transforms_v2.RandomApply(
+                transforms_v2.RandomRotation(degrees=10, expand=False),
+                p=0.3,
             ),
-            p=0.8,
-        ),
-        transforms_v2.RandomPosterize(bits=6, p=0.3),
-        transforms_v2.RandomSolarize(threshold=0.65, p=0.3),
-        transforms_v2.RandomApply(
-            transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.5, 1.2)),
-            p=0.8,
-        ),
-        transforms_v2.RandomGrayscale(p=0.2),
-    ]
-    # Student
-    ## Global
-    student_global_aug = transforms_v2.Compose([
-        global_crop,
-        *geometric_transfs,
-        *photometric_transfs,
-    ])
-    ## Local
-    student_local_aug = transforms_v2.Compose([
-        local_crop,
-        *geometric_transfs,
-        *photometric_transfs,
-    ])
-    # Teacher
-    teacher_aug = transforms_v2.Compose([
-        global_crop,
-        *geometric_transfs,
-        photometric_transfs[0],
-        *photometric_transfs[-2:],
-    ])
-    return teacher_aug, student_global_aug, student_local_aug
+        ]
+        # Photometric transformations
+        photometric_transfs = [
+            transforms_v2.RandomApply(
+                transforms_v2.ColorJitter(
+                    brightness=0.4,
+                    contrast=0.4,
+                    saturation=0.2,
+                    hue=0.1,
+                ),
+                p=0.8,
+            ),
+            transforms_v2.RandomPosterize(bits=6, p=0.3),
+            transforms_v2.RandomSolarize(threshold=0.65, p=0.3),
+            transforms_v2.RandomApply(
+                transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.5, 1.2)),
+                p=0.8,
+            ),
+            transforms_v2.RandomGrayscale(p=0.2),
+        ]
+        # Student
+        ## Global
+        student_global_aug = transforms_v2.Compose([
+            global_crop,
+            *geometric_transfs,
+            *photometric_transfs,
+        ])
+        ## Local
+        student_local_aug = transforms_v2.Compose([
+            local_crop,
+            *geometric_transfs,
+            *photometric_transfs,
+        ])
+        # Teacher
+        teacher_aug = transforms_v2.Compose([
+            global_crop,
+            *geometric_transfs,
+            photometric_transfs[0],
+            *photometric_transfs[-2:],
+        ])
+        return teacher_aug, student_global_aug, student_local_aug
+
+    @staticmethod
+    def collate_fn(batch):
+        num_local_views = len(batch[0][0]) - 2
+        teacher_batch = torch.stack([item[0][0] for item in batch], dim=0)
+        student_batch = torch.stack([item[0][1] for item in batch], dim=0)
+        local_batches = [
+            torch.stack([item[0][i+2] for item in batch], dim=0)
+            for i in range(num_local_views)
+        ]
+        labels = torch.stack([torch.as_tensor(item[1]) for item in batch], dim=0)
+        return teacher_batch, student_batch, local_batches, labels

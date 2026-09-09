@@ -3,16 +3,36 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from torchvision import models
+
+from pavessl.utils import set_random_seeds, ProjectionNetwork
+from pavessl.data import RDD2022, SSLMultiviewTransform
 
 
 def pretrain(args):
     if args.dino_base:
-        model = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
+        backbone = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
     else:
-        model = models.resnet50()
-        model.fc = nn.Identity()
-    print(model)
+        backbone = models.resnet50()
+        backbone.fc = nn.Identity()
+    student = ProjectionNetwork(backbone, args.projection_dim)
+    teacher = ProjectionNetwork(
+        backbone, args.projection_dim, head_norm_last_layer=True,
+    )
+    if torch.cuda.is_available():
+        device = torch.device(torch.cuda.current_device())
+    else:
+        device = torch.device("cpu")
+    student = student.cuda(device=device)
+    teacher = teacher.cuda(device=device)
+    # teacher and student start with the same weights
+    teacher.load_state_dict(student.state_dict())
+    # there is no backpropagation through the teacher
+    for p in teacher.parameters():
+        p.requires_grad = False
+    # Data
+    train_ds, train_loader, valid_ds, valid_loader = get_train_valid_data()
     return
 
 
@@ -36,7 +56,9 @@ def get_args_parser():
     parser.add_argument("--optim", type=str, choices=["adamw", "sgd"], default="adamw")
     parser.add_argument("--freeze-proj", type=int, default=1)
     # Multi-view
+    parser.add_argument("--global-size", type=int, default=224)
     parser.add_argument("--global-scale", type=float, nargs=2, default=(0.75, 1.0))
+    parser.add_argument("--local-size", type=int, default=96)
     parser.add_argument("--local-scale", type=float, nargs=2, default=(0.05, 0.4))
     parser.add_argument("--num-local-views", type=int, default=2)
     # Others
@@ -45,6 +67,48 @@ def get_args_parser():
     parser.add_argument("--checkpoint-freq", type=int, default=10)
     parser.add_argument("--num-workers", type=int, default=4)
     return parser
+
+
+def get_train_valid_data():
+    multiview_trans = SSLMultiviewTransform(
+        global_size=args.global_size,
+        global_scale=args.global_scale,
+        local_size=args.local_size,
+        local_scale=args.local_scale,
+        num_local_views=args.num_local_views,
+    )
+    train_dataset = RDD2022(
+        data_path=args.data,
+        task="ssl",
+        countries="all",
+        split="train",
+        transform=multiview_trans,
+    )
+    train_loader = DataLoader(
+        dataset=train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        collate_fn=SSLMultiviewTransform.collate_fn,
+        pin_memory=False,
+        drop_last=True,
+    )
+    valid_dataset = RDD2022(
+        data_path=args.data,
+        task="classification",
+        countries="all",
+        split="valid",
+        transform=multiview_trans.teacher_global,
+    )
+    valid_loader = DataLoader(
+        dataset=valid_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=False,
+        drop_last=False,
+    )
+    return train_dataset, train_loader, valid_dataset, valid_loader
 
 
 if __name__ == "__main__":
