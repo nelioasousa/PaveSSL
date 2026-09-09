@@ -11,6 +11,7 @@ from pavessl.data import RDD2022, SSLMultiviewTransform
 
 
 def pretrain(args):
+    set_random_seeds(42)
     if args.dino_base:
         backbone = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
     else:
