@@ -95,7 +95,7 @@ class RDD2022(Dataset):
         country, local_index = self._compute_from_global_index(index)
         image_name = self.images[country][local_index]
         split_dir = self.base / f"{country}/{self.split}"
-        image = Image.open(split_dir / f"images/{image_name}")
+        image = Image.open(split_dir / f"images/{image_name}").convert("RGB")
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
             if self.transform is None:
