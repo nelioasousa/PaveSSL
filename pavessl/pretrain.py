@@ -25,8 +25,8 @@ def pretrain(args):
         device = torch.device(torch.cuda.current_device())
     else:
         device = torch.device("cpu")
-    student = student.cuda(device=device)
-    teacher = teacher.cuda(device=device)
+    student = student.to(device=device)
+    teacher = teacher.to(device=device)
     # teacher and student start with the same weights
     teacher.load_state_dict(student.state_dict())
     # there is no backpropagation through the teacher
