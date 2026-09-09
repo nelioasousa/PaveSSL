@@ -33,7 +33,7 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    train_ds, train_loader, valid_ds, valid_loader = get_train_valid_data()
+    train_ds, train_loader, valid_ds, valid_loader = _get_train_valid_data(args)
     return
 
 
@@ -70,7 +70,7 @@ def get_args_parser():
     return parser
 
 
-def get_train_valid_data():
+def _get_train_valid_data(args):
     multiview_trans = SSLMultiviewTransform(
         global_size=args.global_size,
         global_scale=args.global_scale,
