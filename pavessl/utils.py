@@ -21,8 +21,14 @@ def load_bboxes(annotation_path: Path):
     return bboxes
 
 
-def _backbone_forward_pass(backbone: torch.nn.Module, image_size: tuple[int, int] = (96, 96)):
-    x = torch.randn(1, 3, *image_size)
+def _backbone_forward_pass(
+    backbone: torch.nn.Module,
+    image_size: tuple[int, int] = (96, 96),
+):
+    x = torch.randn(
+        1, 3, *image_size,
+        device=next(backbone.parameters()).device,
+    )
     with torch.no_grad():
         out = backbone(x)
     return out
@@ -53,7 +59,6 @@ class ProjectionHead(torch.nn.Module):
         norm_last_layer: bool = False,
     ):
         super().__init__()
-
         num_layers = max(num_layers, 1)
         if num_layers == 1:
             self.mlp = nn.Linear(in_dim, bottleneck_dim)
