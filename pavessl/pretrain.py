@@ -90,7 +90,7 @@ def _get_train_valid_data(args):
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        collate_fn=SSLMultiviewTransform.collate_fn,
+        collate_fn=SSLMultiviewTransform.multiview_collate_fn,
         pin_memory=False,
         drop_last=True,
     )

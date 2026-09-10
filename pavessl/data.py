@@ -219,13 +219,18 @@ class SSLMultiviewTransform(torch.nn.Module):
         return teacher_aug, student_global_aug, student_local_aug
 
     @staticmethod
-    def collate_fn(batch):
-        num_local_views = len(batch[0][0]) - 2
-        teacher_batch = torch.stack([item[0][0] for item in batch], dim=0)
-        student_batch = torch.stack([item[0][1] for item in batch], dim=0)
-        local_batches = [
-            torch.stack([item[0][i+2] for item in batch], dim=0)
-            for i in range(num_local_views)
-        ]
-        labels = torch.stack([torch.as_tensor(item[1]) for item in batch], dim=0)
-        return teacher_batch, student_batch, local_batches, labels
+    def multiview_collate_fn(batch):
+        B = len(batch)  # batch size
+        tensor_dtype = batch[0][0].dtype
+        # Collating global views
+        global_dim = batch[0][0].shape[-3:]
+        global_views = torch.empty((2 * B, *global_dim), dtype=tensor_dtype)
+        torch.stack([views[0] for views in batch], dim=0, out=global_views[:B])
+        torch.stack([views[1] for views in batch], dim=0, out=global_views[B:])
+        # Collating local views
+        local_dim = batch[0][-1].shape[-3:]
+        num_local_views = len(batch[0]) - 2
+        local_views = torch.empty((num_local_views * B, *local_dim), dtype=tensor_dtype)
+        for i in range(num_local_views):
+            torch.stack([views[i+2] for views in batch], dim=0, out=local_views[i*B:(i+1)*B])
+        return global_views, local_views
