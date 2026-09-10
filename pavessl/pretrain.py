@@ -6,19 +6,19 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import models
 
-from pavessl.utils import set_random_seeds, ProjectionNetwork
+import pavessl.utils as utils
 from pavessl.data import RDD2022, SSLMultiviewTransform
 
 
 def pretrain(args):
-    set_random_seeds(42)
+    utils.set_random_seeds(42)
     if args.dino_base:
         backbone = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
     else:
         backbone = models.resnet50()
         backbone.fc = nn.Identity()
-    student = ProjectionNetwork(backbone, args.projection_dim)
-    teacher = ProjectionNetwork(
+    student = utils.ProjectionNetwork(backbone, args.projection_dim)
+    teacher = utils.ProjectionNetwork(
         backbone, args.projection_dim, head_norm_last_layer=True,
     )
     if torch.cuda.is_available():
@@ -34,6 +34,50 @@ def pretrain(args):
         p.requires_grad = False
     # Data
     train_ds, train_loader, valid_ds, valid_loader = _get_train_valid_data(args)
+    # Prepare loss function
+    loss = utils.SSLLoss(
+        projection_dim=args.projection_dim,
+        num_local_views=args.num_local_views,
+        teacher_temp=args.teacher_temp,
+        teacher_temp_start=args.teacher_temp_start,
+        teacher_temp_warmup_epochs=args.teacher_temp_warmup,
+        num_epochs=args.epochs,
+        student_temp=args.student_temp,
+        center_momentum=args.center_momentum,
+    )
+    loss.to(device=device)
+    # Optim
+    params_groups = utils.get_params_groups(student)
+    if args.optim == "adamw":
+        optimizer = torch.optim.AdamW(params_groups)
+    elif args.optim == "sgd":
+        optimizer = torch.optim.SGD(params_groups, momentum=0.9)
+    else:
+        raise ValueError(f"Optimizer {args.optim} not supported")
+    # Schedulers
+    base_lr = args.lr * args.batch_size / 256.0
+    lr_schedule = utils.cosine_scheduler(
+        base_value=base_lr,
+        final_value=args.lr_end,
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+        warmup_epochs=args.lr_warmup,
+        start_warmup_value=min(1e-7, base_lr / 10),
+    )
+    wd_schedule = utils.cosine_scheduler(
+        base_value=args.weight_decay,
+        final_value=args.weight_decay_end,
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+    )
+    momentum_schedule = utils.cosine_scheduler(
+        base_value=args.teacher_momentum,
+        final_value=1.0,
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+    )
+    # Resume training
+    ...
     return
 
 
@@ -46,6 +90,11 @@ def get_args_parser():
     # Momentum coefficients
     parser.add_argument("--teacher-momentum", type=float, default=0.996)
     parser.add_argument("--center-momentum", type=float, default=0.9)
+    # Sharpness temperature
+    parser.add_argument("--student-temp", type=float, default=0.1)
+    parser.add_argument("--teacher-temp", type=float, default=0.04)
+    parser.add_argument("--teacher-temp-start", type=float, default=0.02)
+    parser.add_argument("--teacher-temp-warmup", type=int, default=3)
     # Training/optim parameters
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=64)
