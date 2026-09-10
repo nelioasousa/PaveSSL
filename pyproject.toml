@@ -13,6 +13,7 @@ readme = "README.md"
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
+cpu = ["torch", "torchvision"]
 dev = ["ruff"]
 
 [project.urls]
