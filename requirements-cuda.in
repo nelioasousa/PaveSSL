@@ -1,4 +1,4 @@
-# Change according to your CUDA installation
+# Change according to your CUDA target version
 --index-url https://download.pytorch.org/whl/cu130
 
 torch
