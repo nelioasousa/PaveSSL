@@ -51,7 +51,7 @@ def get_args_parser():
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--lr-end", type=float, default=1e-6)
-    parser.add_argument("--warmup-epochs", type=int, default=10)
+    parser.add_argument("--lr-warmup", type=int, default=10)
     parser.add_argument("--weight-decay", type=float, default=0.04)
     parser.add_argument("--weight-decay-end", type=float, default=0.4)
     parser.add_argument("--optim", type=str, choices=["adamw", "sgd"], default="adamw")
