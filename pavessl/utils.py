@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -213,3 +215,47 @@ def cosine_scheduler(
         return schedule
     warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
     return np.concatenate((warmup_schedule, schedule), axis=0)
+
+
+def save_states(
+    *,
+    save_file: Path,
+    states_dict: dict[str, Any],
+    temp_suffix: str = ".tmp",
+):
+    tmp_file = save_file.with_suffix(f"{save_file.suffix}{temp_suffix}")
+    try:
+        with tmp_file.open("wb") as tmp:
+            torch.save(obj=states_dict, f=tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+    except Exception as e:
+        tmp_file.unlink(missing_ok=True)
+        raise RuntimeError(f"Error while saving state to {save_file}") from e
+    else:
+        # If an error occurs here, the tmp_file is already safe
+        try:
+            os.replace(tmp_file, save_file)
+        except Exception as e:
+            raise RuntimeError(
+                f"Error when replacing {save_file} with tmp file {tmp_file}."
+                f"It is safe to manually move those files to recover the state."
+            ) from e
+
+
+def restart_from_checkpoint(
+    ckp_path: Path,
+    run_variables: dict[str, Any] | None = None,
+    **kwargs,
+):
+    if not ckp_path.is_file():
+        return
+    checkpoint = torch.load(ckp_path, map_location="cpu")
+    # reload torch states
+    for key, value in kwargs.items():
+        value.load_state_dict(checkpoint[key])
+    # reload variables
+    if run_variables is None:
+        return
+    for var_name in run_variables:
+        run_variables[var_name] = checkpoint[var_name]

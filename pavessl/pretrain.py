@@ -12,6 +12,7 @@ from pavessl.data import RDD2022, SSLMultiviewTransform
 
 def pretrain(args):
     utils.set_random_seeds(42)
+    args.save_dir.mkdir(exist_ok=True, parents=True)
     if args.dino_base:
         backbone = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
     else:
@@ -77,6 +78,41 @@ def pretrain(args):
         niter_per_ep=len(train_loader),
     )
     # Resume training
+    to_restore = {"epochs": 0, "args": args}
+    utils.restart_from_checkpoint(
+        args.save_dir / "checkpoint.pth",
+        run_variables=to_restore,
+        student=student,
+        teacher=teacher,
+        optimizer=optimizer,
+        loss=loss,
+    )
+    # args = to_restore["args"]
+    start_epoch = to_restore["epochs"]
+    # Training
+    for epoch in range(start_epoch, args.epochs):
+        ...
+        states_dict = {
+            'student': student.state_dict(),
+            'teacher': teacher.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'epoch': epoch + 1,
+            'args': args,
+            'loss': loss.state_dict(),
+        }
+        # Save checkpoints
+        utils.save_states(
+            save_file=args.save_dir / "checkpoint.pth",
+            states_dict=states_dict,
+        )
+        if args.checkpoint_freq and not (epoch % args.checkpoint_freq):
+            utils.save_states(
+                save_file=args.save_dir / f"checkpoint_{epoch:04d}.pth",
+                states_dict=states_dict,
+            )
+        # Run eval
+        ...
+    # Time statistics
     ...
     return
 
