@@ -1,6 +1,9 @@
 import argparse
 from pathlib import Path
+import math
+import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -14,7 +17,7 @@ def pretrain(args):
     utils.set_random_seeds(42)
     args.save_dir.mkdir(exist_ok=True, parents=True)
     if args.dino_base:
-        backbone = torch.hub.load('facebookresearch/dino:main', 'dino_resnet50')
+        backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
     else:
         backbone = models.resnet50()
         backbone.fc = nn.Identity()
@@ -36,7 +39,7 @@ def pretrain(args):
     # Data
     train_ds, train_loader, valid_ds, valid_loader = _get_train_valid_data(args)
     # Prepare loss function
-    loss = utils.SSLLoss(
+    loss_fn = utils.SSLLoss(
         projection_dim=args.projection_dim,
         num_local_views=args.num_local_views,
         teacher_temp=args.teacher_temp,
@@ -46,7 +49,7 @@ def pretrain(args):
         student_temp=args.student_temp,
         center_momentum=args.center_momentum,
     )
-    loss.to(device=device)
+    loss_fn.to(device=device)
     # Optim
     params_groups = utils.get_params_groups(student)
     if args.optim == "adamw":
@@ -78,29 +81,48 @@ def pretrain(args):
         niter_per_ep=len(train_loader),
     )
     # Resume training
-    to_restore = {"epochs": 0, "args": args}
+    to_restore = {
+        "epoch": 0,
+        "loss_history": np.zeros((args.epochs, 3), dtype=np.float32),
+    }
     utils.restart_from_checkpoint(
         args.save_dir / "checkpoint.pth",
         run_variables=to_restore,
         student=student,
         teacher=teacher,
         optimizer=optimizer,
-        loss=loss,
+        loss=loss_fn,
     )
-    # args = to_restore["args"]
-    start_epoch = to_restore["epochs"]
+    loss_history = to_restore["loss_history"]
     # Training
-    for epoch in range(start_epoch, args.epochs):
-        ...
-        states_dict = {
-            'student': student.state_dict(),
-            'teacher': teacher.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch + 1,
-            'args': args,
-            'loss': loss.state_dict(),
-        }
+    start_time = time.monotonic()
+    for epoch in range(to_restore["epoch"], args.epochs):
+        loss_log = _train_one_epoch(
+            student=student,
+            teacher=teacher,
+            loss_fn=loss_fn,
+            data_loader=train_loader,
+            optimizer=optimizer,
+            lr_schedule=lr_schedule,
+            wd_schedule=wd_schedule,
+            momentum_schedule=momentum_schedule,
+            epoch=epoch,
+            device=device,
+            args=args,
+        )
+        loss_history[epoch, 0] = loss_log.min_value
+        loss_history[epoch, 1] = loss_log.max_value
+        loss_history[epoch, 2] = loss_log.global_avg
         # Save checkpoints
+        states_dict = {
+            "student": student.state_dict(),
+            "teacher": teacher.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch + 1,
+            "loss_history": loss_history,
+            "args": args,
+            "loss": loss_fn.state_dict(),
+        }
         utils.save_states(
             save_file=args.save_dir / "checkpoint.pth",
             states_dict=states_dict,
@@ -111,10 +133,75 @@ def pretrain(args):
                 states_dict=states_dict,
             )
         # Run eval
-        ...
-    # Time statistics
-    ...
+        pass
+    # Save loss history and report duration
+    np.savetxt(
+        fname=(args.save_dir / "loss_history.csv"),
+        X=loss_history,
+        delimiter=",",
+        fmt="%24.10e",
+        header="min,max,avg",
+    )
+    train_duration = int(time.monotonic() - start_time)
+    print(f"Training ended in {utils.get_time_string(train_duration)}!")
     return
+
+
+def _train_one_epoch(
+    student,
+    teacher,
+    loss_fn,
+    data_loader,
+    optimizer,
+    lr_schedule,
+    wd_schedule,
+    momentum_schedule,
+    epoch,
+    device,
+    args,
+):
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("loss", utils.SmoothedValue())
+    metric_logger.add_meter("lr", utils.SmoothedValue(fmt="{value:.2e}"))
+    metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
+    header = f"Epoch: [{str(epoch).rjust(len(str(args.epochs)), '0')}/{args.epochs}]"
+    for it, (global_views, local_views) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+        it = len(data_loader) * epoch + it  # Global training iteration
+        # Only the first group is regularized
+        optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr_schedule[it]
+        # Move images to device
+        global_views = global_views.to(device=device, non_blocking=True)
+        local_views = local_views.to(device=device, non_blocking=True)
+        # Teacher and student forward passes && compute loss
+        teacher_out = teacher(global_views)
+        student_global_out = student(global_views)
+        student_local_out = student(local_views)
+        loss = loss_fn(teacher_out, student_global_out, student_local_out, epoch)
+        # Loss explosion, unstable training
+        if not math.isfinite(loss.item()):
+            raise SystemExit(f"Loss exploded with value {loss.item()}")
+        # Student update
+        optimizer.zero_grad()
+        loss.backward()
+        if epoch < args.freeze_proj:
+            # Freeze last layer of the projection head in this iteration
+            student.head.last_layer.zero_grad(set_to_none=True)
+        optimizer.step()
+        # EMA teacher update
+        with torch.no_grad():
+            m = momentum_schedule[it]
+            for param_stdt, param_tchr in zip(student.parameters(), teacher.parameters()):
+                param_tchr.data.mul_(m).add_((1 - m) * param_stdt.detach().data)
+        # Logging
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        metric_logger.update(loss=loss.item())
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+    # print("Averaged stats:", metric_logger)
+    return metric_logger.meters["loss"]
 
 
 def get_args_parser():

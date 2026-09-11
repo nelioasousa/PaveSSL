@@ -1,6 +1,11 @@
+from collections.abc import Iterable
+from numbers import Real
 import os
+import time
+import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from collections import deque, defaultdict
 
 import numpy as np
 import torch
@@ -259,3 +264,152 @@ def restart_from_checkpoint(
         return
     for var_name in run_variables:
         run_variables[var_name] = checkpoint[var_name]
+
+
+class SmoothedValue():
+    def __init__(
+        self,
+        window_size: int | None = 20,
+        fmt: str = "{value:.6f} ({local_avg:.6f})",
+    ):
+        self.max_value = 0.0
+        self.min_value = np.inf
+        self.deque = deque(maxlen=window_size)
+        self.total = 0.0
+        self.count = 0
+        self.fmt = fmt
+
+    def update(self, value: Real):
+        if value > self.max_value:
+            self.max_value = value
+        if value < self.min_value:
+            self.min_value = value
+        self.deque.append(value)
+        self.count += 1
+        self.total += value
+
+    @property
+    def local_avg(self):
+        return sum(self.deque) / len(self.deque)
+
+    @property
+    def global_avg(self):
+        return self.total / self.count
+
+    @property
+    def local_max(self):
+        return max(self.deque)
+
+    @property
+    def global_max(self):
+        return self.max_value
+
+    @property
+    def local_min(self):
+        return min(self.deque)
+
+    @property
+    def global_min(self):
+        return self.min_value
+
+    @property
+    def value(self):
+        return self.deque[-1]
+
+    def __str__(self):
+        return self.fmt.format(
+            local_avg=self.local_avg,
+            global_avg=self.global_avg,
+            local_max=self.local_max,
+            global_max = self.global_max,
+            local_min=self.local_min,
+            global_min = self.global_min,
+            value=self.value,
+        )
+
+
+def get_time_string(seconds: int):
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts = {"d": days, "h": hours, "m": minutes, "s": seconds}
+    time_string = ", ".join(f"{v} {k}" for k, v in parts.items() if v)
+    return time_string
+
+
+class MetricLogger():
+    MB = 1024.0 * 1024.0
+
+    def __init__(self, delimiter: str = "\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            try:
+                v = v.item()
+            except AttributeError:
+                pass
+            self.meters[k].update(v)
+
+    def add_meter(self, name: str, meter: SmoothedValue):
+        self.meters[name] = meter
+
+    def __str__(self):
+        logger_str = [
+            f"{name}: {meter}"
+            for name, meter in self.meters.items()
+        ]
+        return self.delimiter.join(logger_str)
+
+    def log_every(
+        self,
+        iterable: Iterable,
+        print_freq: int,
+        header: str = "",
+        cpu_training: bool = False,
+    ):
+        i = 0
+        start_time = time.monotonic()
+        end_time = start_time
+        iter_duration = SmoothedValue()
+        data_duration = SmoothedValue()
+        log_msg = [
+            header,
+            f"[{{0:{len(str(len(iterable)))}d}}/{{1}}]",
+            "eta: {eta}",
+            "{meters}",
+            "time: {time}",
+            "data: {data}",
+        ]
+        cuda_training = not cpu_training and torch.cuda.is_available()
+        if cuda_training:
+            log_msg.append("max mem: {memory:.0f}")
+        log_msg = self.delimiter.join(log_msg)
+        for item in iterable:
+            data_duration.update(time.monotonic() - end_time)
+            yield item
+            iter_duration.update(time.monotonic() - end_time)
+            if not (i % print_freq) or i == (len(iterable) - 1):
+                eta_seconds = iter_duration.global_avg * (len(iterable) - i + 1)
+                eta_string = get_time_string(int(eta_seconds))
+                print(log_msg.format(
+                    i+1,
+                    len(iterable),
+                    eta=eta_string,
+                    meters=str(self),
+                    time=str(iter_duration),
+                    data=str(data_duration),
+                    memory=(
+                        torch.cuda.max_memory_allocated() / self.MB
+                        if cuda_training
+                        else None
+                    ),
+                ))
+            i += 1
+            end_time = time.monotonic()
+        total_time = time.monotonic() - start_time
+        total_time_str = get_time_string(int(total_time))
+        print('{} Total time: {} ({:.6f} s/it)'.format(
+            header, total_time_str, total_time / len(iterable),
+        ))
