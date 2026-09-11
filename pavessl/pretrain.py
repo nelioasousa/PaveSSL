@@ -230,16 +230,16 @@ def get_args_parser():
     parser.add_argument("--optim", type=str, choices=["adamw", "sgd"], default="adamw")
     parser.add_argument("--freeze-proj", type=int, default=1)
     # Multi-view
-    parser.add_argument("--global-size", type=int, default=224)
+    parser.add_argument("--global-size", type=int, default=320)
     parser.add_argument("--global-scale", type=float, nargs=2, default=(0.75, 1.0))
-    parser.add_argument("--local-size", type=int, default=96)
+    parser.add_argument("--local-size", type=int, default=160)
     parser.add_argument("--local-scale", type=float, nargs=2, default=(0.05, 0.4))
-    parser.add_argument("--num-local-views", type=int, default=2)
+    parser.add_argument("--num-local-views", type=int, default=3)
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument("--save-dir", type=Path, default=Path("data/results/pretrain"))
     parser.add_argument("--checkpoint-freq", type=int, default=10)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=3)
     return parser
 
 
