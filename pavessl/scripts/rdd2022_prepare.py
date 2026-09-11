@@ -1,9 +1,9 @@
+import argparse
 import random
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from math import ceil, floor
 from pathlib import Path
-from typing import cast
 
 from PIL import Image
 from tqdm import tqdm
@@ -33,71 +33,58 @@ CLASS_INDEXES = {class_name: i for i, class_name in enumerate(CLASSES)}
 NORWAY_TARGET_SIZE = 2000
 
 
-type BBox = tuple[str, int, int, int, int]
-type ImgAnnPair = tuple[Path, Path]
-
-
 # To cut Norway images
-def _cut_image_and_fix_bboxes(
-    img: Image.Image,
-    bboxes: list[BBox],
-) -> tuple[Image.Image, list[BBox]]:
-
+def _cut_image_and_fix_bboxes(img, bboxes):
     img_height = img.size[1]
     diff = img_height - NORWAY_TARGET_SIZE
-    cut_bboxes: list[BBox] = []
+    cut_bboxes = []
     for class_name, xmin, ymin, xmax, ymax in bboxes:
         box_width = xmax - xmin
         box_remain = img_height - xmin
         # Discard bbox if remaining width is small
         if box_remain < (box_width / 16):
             continue
-        cut_bboxes.append(
-            (
-                class_name,
-                xmin,
-                ymin - diff,
-                min(img_height, xmax),
-                ymax - diff,
-            )
-        )
+        cut_bboxes.append((
+            class_name,
+            xmin,
+            ymin - diff,
+            min(img_height, xmax),
+            ymax - diff,
+        ))
     return img.crop((0, diff, NORWAY_TARGET_SIZE, img_height)), cut_bboxes
 
 
-def _get_bboxes_from_xml_label(label_path: Path) -> list[BBox]:
+def _get_bboxes_from_xml_label(label_path: Path):
     label = ET.parse(label_path)
-    bboxes: list[BBox] = []
+    bboxes = []
     for object in label.iter("object"):
         class_name = object.findtext("name", None)
         bbox = object.find("bndbox")
         if class_name is None or bbox is None:
             continue
-        xmin = round(float(bbox.findtext("xmin", "")))
-        ymin = round(float(bbox.findtext("ymin", "")))
-        xmax = round(float(bbox.findtext("xmax", "")))
-        ymax = round(float(bbox.findtext("ymax", "")))
+        try:
+            xmin = round(float(bbox.findtext("xmin")))
+            ymin = round(float(bbox.findtext("ymin")))
+            xmax = round(float(bbox.findtext("xmax")))
+            ymax = round(float(bbox.findtext("ymax")))
+        except TypeError:
+            continue
         bboxes.append((CLASS_NAMES_MAP[class_name], xmin, ymin, xmax, ymax))
     return bboxes
 
 
-def _save_bboxes_to_annotation(
-    bboxes: list[BBox],
-    ann_save_path: Path,
-):
+def _save_bboxes_to_annotation(bboxes, ann_save_path):
     label_lines = [
         "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
-            CLASS_INDEXES[cls_name],
-            *coords,
+            CLASS_INDEXES[cls_name], *coords,
         )
         for cls_name, *coords in bboxes
     ]
-    with ann_save_path.open("w") as label_file:
+    with open(ann_save_path, mode="w") as label_file:
         label_file.writelines(label_lines)
 
 
-def _get_train_test_samples(
-    country_folder: Path,
-) -> tuple[list[ImgAnnPair], list[Path]]:
+def _get_train_test_samples(country_folder: Path):
     train_samples = [
         (
             img_path,
@@ -112,21 +99,18 @@ def _get_train_test_samples(
 
 
 def _get_stratified_splits(
-    image_label_pairs: list[ImgAnnPair],
+    image_label_pairs: list[tuple[Path, Path]],
     train_size: int,
     valid_size: int,
     test_size: int,
-) -> tuple[list[ImgAnnPair], list[ImgAnnPair], list[ImgAnnPair]]:
-    pairs_by_class_group: dict[tuple[int, ...], list[ImgAnnPair]] = defaultdict(
-        list
-    )
+):
+    pairs_by_class_group = defaultdict(list)
     for img_path, label_path in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(label_path)
+        # TODO: fix `class_group` bug
         class_group = tuple(sorted(CLASS_INDEXES[name] for name, *_ in bboxes))
         pairs_by_class_group[class_group].append((img_path, label_path))
-    train_pairs: list[ImgAnnPair] = []
-    valid_pairs: list[ImgAnnPair] = []
-    test_pairs: list[ImgAnnPair] = []
+    train_pairs, valid_pairs, test_pairs = [], [], []
     total_size = train_size + valid_size + test_size
     test_proportion = test_size / total_size
     valid_proportion = valid_size / total_size
@@ -145,11 +129,7 @@ def _train_valid_test_split(
     country_folder: Path,
     train_proportion: float,
     valid_proportion: float,
-) -> tuple[
-    list[tuple[Path, Path | None]],
-    list[ImgAnnPair],
-    list[ImgAnnPair],
-]:
+):
     if (
         train_proportion < 0.0
         or valid_proportion < 0.0
@@ -163,13 +143,12 @@ def _train_valid_test_split(
     )
     valid_size = floor(total_samples * valid_proportion)
     train_size = total_samples - test_size - valid_size
-    train_split: list[tuple[Path, Path | None]] = []
-    train_split.extend([(img_path, None) for img_path in test_samples])
-    train_size -= len(test_samples)
+    train_split = [(img_path, None) for img_path in test_samples]
+    train_size -= len(train_split)
     if train_size < 0:
         raise ValueError(
             "Train size must be at least {} (proportion: {:.2f})".format(
-                len(test_samples), len(test_samples) / total_samples
+                len(test_samples), len(test_samples) / total_samples,
             )
         )
     inc_train, valid_split, test_split = _get_stratified_splits(
@@ -202,10 +181,9 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
             valid_prop,
         )
         for img_path, label_path in train_split:
-            img = cast(Image.Image, Image.open(img_path))
+            img = Image.open(img_path)
             bboxes = (
-                []
-                if label_path is None
+                [] if label_path is None
                 else _get_bboxes_from_xml_label(label_path)
             )
             if country_folder.name == "Norway":
@@ -217,7 +195,7 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
             _save_bboxes_to_annotation(bboxes, ann_dst)
         for split, pairs in (("valid", valid_split), ("test", test_split)):
             for img_path, label_path in pairs:
-                img = cast(Image.Image, Image.open(img_path))
+                img = Image.open(img_path)
                 bboxes = _get_bboxes_from_xml_label(label_path)
                 if country_folder.name == "Norway":
                     img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
@@ -229,11 +207,13 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
     (save_dir / "classes.txt").write_text("\n".join(CLASSES))
 
 
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser()
+def get_arg_parser():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Prepare the RDD2022 dataset for "
+            "pretraining, fine-tuning and evaluation."
+        ),
+    )
     parser.add_argument(
         "-tp",
         "--train_proportion",
@@ -262,21 +242,25 @@ if __name__ == "__main__":
         nargs="?",
         help="Where to save the prepared dataset.",
     )
+    return parser
 
-    args = parser.parse_args()
 
-    data: Path = args.data
-    save_dir: Path = args.save_dir
-    train_prop: float = args.train_proportion
-    valid_prop: float = args.valid_proportion
-    data_path = data.absolute().resolve()
-    save_path = save_dir.absolute().resolve()
-
+def run():
     try:
-        main(data_path, train_prop, valid_prop, save_path)
-        sys.exit(0)
+        parser = get_arg_parser()
+        args = parser.parse_args()
+        main(
+            args.data.resolve(),
+            args.train_proportion,
+            args.valid_proportion,
+            args.save_dir.resolve(),
+        )
+        return 0
     except Exception:
         import traceback
-
         traceback.print_exc()
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

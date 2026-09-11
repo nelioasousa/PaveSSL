@@ -1,6 +1,7 @@
+import argparse
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
-from json import dump
+from json import dump as json_dump
 from pathlib import Path
 from shutil import copy
 
@@ -9,15 +10,9 @@ from tqdm import tqdm
 
 def main(data_path: Path, save_dir: Path, num_samples: int):
     save_dir.mkdir(exist_ok=True, parents=True)
-    sizes_count: dict[str, dict[str, int]] = defaultdict(
-        lambda: defaultdict(int)
-    )
-    objects_count: dict[str, dict[str, int]] = defaultdict(
-        lambda: defaultdict(int)
-    )
-    samples_count: dict[str, dict[str, int]] = defaultdict(
-        lambda: defaultdict(int)
-    )
+    sizes_count = defaultdict(lambda: defaultdict(int))
+    objects_count = defaultdict(lambda: defaultdict(int))
+    samples_count = defaultdict(lambda: defaultdict(int))
     for country_dir in tqdm(list(data_path.iterdir())):
         country_name = country_dir.name
         samples_dir = save_dir / country_name
@@ -48,14 +43,13 @@ def main(data_path: Path, save_dir: Path, num_samples: int):
                     copy(images_folder / image_name, sample_dir / image_name)
                     samples_count[country_name][obj] += 1
     with (save_dir / "overview.json").open("w") as f:
-        dump([sizes_count, objects_count], f, indent=2, sort_keys=True)
+        json_dump([sizes_count, objects_count], f, indent=2, sort_keys=True)
 
 
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser()
+def get_arg_parser():
+    parser = argparse.ArgumentParser(
+        description="A simple overview of the RDD2022 dataset training sets.",
+    )
     parser.add_argument(
         "data",
         type=Path,
@@ -77,20 +71,20 @@ if __name__ == "__main__":
         default=50,
         help="Number of samples selected per object class.",
     )
+    return parser
 
-    args = parser.parse_args()
 
-    data: Path = args.data
-    save_dir: Path = args.save_dir
-    num_samples: int = args.num_samples
-    data_path = data.absolute().resolve()
-    save_path = save_dir.absolute().resolve()
-
+def run():
     try:
-        main(data_path, save_path, num_samples)
-        sys.exit(0)
+        parser = get_arg_parser()
+        args = parser.parse_args()
+        main(args.data.resolve(), args.save_dir.resolve(), args.num_samples)
+        return 0
     except Exception:
         import traceback
-
         traceback.print_exc()
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())
