@@ -126,6 +126,14 @@ def _get_stratified_splits(
     return train_pairs, valid_pairs, test_pairs
 
 
+def _get_available_classes(img_ann_pairs: tuple[Path, Path]):
+    classes = set()
+    for _, ann in img_ann_pairs:
+        bboxes = _get_bboxes_from_xml_label(ann)
+        classes.update(cls_name for cls_name, *_ in bboxes)
+    return sorted(classes)
+
+
 def _train_valid_test_split(
     country_folder: Path,
     train_proportion: float,
@@ -138,6 +146,7 @@ def _train_valid_test_split(
     ):
         raise ValueError("Invalid proportions")
     train_samples, test_samples = _get_train_test_samples(country_folder)
+    classes = _get_available_classes(train_samples)
     total_samples = len(train_samples) + len(test_samples)
     test_size = ceil(
         total_samples * (1.0 - train_proportion - valid_proportion)
@@ -159,7 +168,7 @@ def _train_valid_test_split(
         test_size,
     )
     train_split.extend(inc_train)
-    return train_split, valid_split, test_split
+    return classes, train_split, valid_split, test_split
 
 
 def _prepare_dst_folder(dest_folder: Path):
@@ -176,10 +185,13 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
     for country_folder in tqdm(list(data_path.iterdir())):
         dst_folder = save_dir / country_folder.name
         _prepare_dst_folder(dst_folder)
-        train_split, valid_split, test_split = _train_valid_test_split(
+        classes, train_split, valid_split, test_split = _train_valid_test_split(
             country_folder,
             train_prop,
             valid_prop,
+        )
+        (dst_folder / "classes.txt").write_text(
+            "\n".join(f"{CLASS_INDEXES[cls]} {cls}" for cls in classes)
         )
         for img_path, label_path in train_split:
             img = Image.open(img_path)
