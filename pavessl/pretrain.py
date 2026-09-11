@@ -59,14 +59,13 @@ def pretrain(args):
     else:
         raise ValueError(f"Optimizer {args.optim} not supported")
     # Schedulers
-    base_lr = args.lr * args.batch_size / 256.0
     lr_schedule = utils.cosine_scheduler(
-        base_value=base_lr,
-        final_value=args.lr_end,
+        base_value=(args.lr * args.batch_size / 256.0),
+        final_value=(args.lr_end * args.batch_size / 256.0),
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
         warmup_epochs=args.lr_warmup_size,
-        start_warmup_value=args.lr_warmup_start,
+        start_warmup_value=(args.lr_warmup_start * args.batch_size / 256.0),
     )
     wd_schedule = utils.cosine_scheduler(
         base_value=args.weight_decay,
