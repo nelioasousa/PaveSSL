@@ -231,9 +231,9 @@ def get_args_parser():
     parser.add_argument("--freeze-last-layer", type=int, default=1)
     # Multi-view
     parser.add_argument("--global-size", type=int, default=448)
-    parser.add_argument("--global-scale", type=float, nargs=2, default=(0.7, 1.0))
+    parser.add_argument("--global-scale", type=float, nargs=2, default=(0.6, 0.85))
     parser.add_argument("--local-size", type=int, default=224)
-    parser.add_argument("--local-scale", type=float, nargs=2, default=(0.08, 0.4))
+    parser.add_argument("--local-scale", type=float, nargs=2, default=(0.125, 0.4))
     parser.add_argument("--num-local-views", type=int, default=2)
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
