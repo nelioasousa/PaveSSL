@@ -331,11 +331,12 @@ class SmoothedValue():
 def get_time_string(seconds: int):
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
-    days, hours = divmod(hours, 24)
+    # days, hours = divmod(hours, 24)
     time_string = " ".join(
         f"{v:02d}{k}"
         for k, v
-        in (("d", days), ("h", hours), ("m", minutes), ("s", seconds))
+        in (("h", hours), ("m", minutes), ("s", seconds))
+        # in (("d", days), ("h", hours), ("m", minutes), ("s", seconds))
     )
     return time_string
 
@@ -394,7 +395,7 @@ class MetricLogger():
             yield item
             iter_duration.update(time.monotonic() - end_time)
             if not (i % print_freq) or i == (len(iterable) - 1):
-                eta_seconds = iter_duration.global_avg * (len(iterable) - i + 1)
+                eta_seconds = iter_duration.global_avg * (len(iterable) - i - 1)
                 eta_string = get_time_string(int(eta_seconds))
                 print(log_msg.format(
                     i+1,
