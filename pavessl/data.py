@@ -164,7 +164,7 @@ class SSLMultiviewTransform(torch.nn.Module):
         local_scale: tuple[float, float] = (0.05, 0.4),
     ):
         # Random cropping
-        global_crop = transforms_v2.RandomResizedCrop(
+        global_crop = transforms_v2.BottomRandomResizedCrop(
             size=global_size,
             scale=global_scale,
         )
