@@ -107,8 +107,9 @@ def _get_stratified_splits(
     pairs_by_class_group = defaultdict(list)
     for img_path, label_path in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(label_path)
-        # TODO: fix `class_group` bug
-        class_group = tuple(sorted(CLASS_INDEXES[name] for name, *_ in bboxes))
+        class_group = tuple(sorted(frozenset(
+            CLASS_INDEXES[name] for name, *_ in bboxes
+        )))
         pairs_by_class_group[class_group].append((img_path, label_path))
     train_pairs, valid_pairs, test_pairs = [], [], []
     total_size = train_size + valid_size + test_size
