@@ -255,7 +255,7 @@ def restart_from_checkpoint(
 ):
     if not ckp_path.is_file():
         return
-    checkpoint = torch.load(ckp_path, map_location="cpu")
+    checkpoint = torch.load(ckp_path, map_location="cpu", weights_only=False)
     # reload torch states
     for key, value in kwargs.items():
         value.load_state_dict(checkpoint[key])
