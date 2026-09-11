@@ -284,13 +284,17 @@ def _get_train_valid_data(args):
     return train_dataset, train_loader, valid_dataset, valid_loader
 
 
-if __name__ == "__main__":
-    parser = get_args_parser()
-    args = parser.parse_args()
+def run():
     try:
+        parser = get_args_parser()
+        args = parser.parse_args()
         pretrain(args)
-        raise SystemExit(0)
-    except Exception as e:
+        return 0
+    except Exception:
         import traceback
         traceback.print_exc()
-        raise SystemExit(1) from e
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

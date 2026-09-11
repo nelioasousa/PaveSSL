@@ -19,6 +19,9 @@ dev = ["ruff"]
 [project.urls]
 Source = "https://github.com/nelioasousa/PaveSSL"
 
+[project.scripts]
+pretrain = "pavessl.pretrain:run"
+
 
 [tool]
 
