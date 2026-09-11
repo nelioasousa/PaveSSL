@@ -332,8 +332,11 @@ def get_time_string(seconds: int):
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
-    parts = {"d": days, "h": hours, "m": minutes, "s": seconds}
-    time_string = ", ".join(f"{v} {k}" for k, v in parts.items() if v)
+    time_string = " ".join(
+        f"{v:02d}{k}"
+        for k, v
+        in (("d", days), ("h", hours), ("m", minutes), ("s", seconds))
+    )
     return time_string
 
 
@@ -372,8 +375,8 @@ class MetricLogger():
         i = 0
         start_time = time.monotonic()
         end_time = start_time
-        iter_duration = SmoothedValue()
-        data_duration = SmoothedValue()
+        iter_duration = SmoothedValue(fmt="{value:7.3f}")
+        data_duration = SmoothedValue(fmt="{value:7.3f}")
         log_msg = [
             header,
             f"[{{0:{len(str(len(iterable)))}d}}/{{1}}]",
@@ -384,7 +387,7 @@ class MetricLogger():
         ]
         cuda_training = not cpu_training and torch.cuda.is_available()
         if cuda_training:
-            log_msg.append("max mem: {memory:.0f}")
+            log_msg.append("mem: {memory:.0f} MB")
         log_msg = self.delimiter.join(log_msg)
         for item in iterable:
             data_duration.update(time.monotonic() - end_time)
@@ -396,7 +399,7 @@ class MetricLogger():
                 print(log_msg.format(
                     i+1,
                     len(iterable),
-                    eta=eta_string,
+                    eta=f"({eta_string})",
                     meters=str(self),
                     time=str(iter_duration),
                     data=str(data_duration),

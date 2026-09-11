@@ -161,7 +161,7 @@ def _train_one_epoch(
     args,
 ):
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("loss", utils.SmoothedValue())
+    metric_logger.add_meter("loss", utils.SmoothedValue(fmt="({value:10.6f} / {local_avg:10.6f} avg)"))
     metric_logger.add_meter("lr", utils.SmoothedValue(fmt="{value:.2e}"))
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     header = f"Epoch: [{str(epoch).rjust(len(str(args.epochs)), '0')}/{args.epochs}]"
