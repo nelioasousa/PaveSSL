@@ -65,8 +65,8 @@ def pretrain(args):
         final_value=args.lr_end,
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
-        warmup_epochs=args.lr_warmup,
-        start_warmup_value=min(1e-7, base_lr / 10),
+        warmup_epochs=args.lr_warmup_size,
+        start_warmup_value=args.lr_warmup_start,
     )
     wd_schedule = utils.cosine_scheduler(
         base_value=args.weight_decay,
@@ -223,7 +223,8 @@ def get_args_parser():
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--lr-end", type=float, default=1e-6)
-    parser.add_argument("--lr-warmup", type=int, default=10)
+    parser.add_argument("--lr-warmup-size", type=int, default=5)
+    parser.add_argument("--lr-warmup-start", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.04)
     parser.add_argument("--weight-decay-end", type=float, default=0.4)
     parser.add_argument("--optim", type=str, choices=["adamw", "sgd"], default="adamw")
