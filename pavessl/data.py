@@ -173,25 +173,27 @@ class SSLMultiviewTransform(torch.nn.Module):
         geometric_transfs = [
             transforms_v2.RandomHorizontalFlip(p=0.5),
             transforms_v2.RandomApply(
-                transforms_v2.RandomRotation(degrees=10, expand=False),
+                [transforms_v2.RandomRotation(degrees=10, expand=False)],
                 p=0.3,
             ),
         ]
         # Photometric transformations
         photometric_transfs = [
             transforms_v2.RandomApply(
-                transforms_v2.ColorJitter(
-                    brightness=0.4,
-                    contrast=0.4,
-                    saturation=0.2,
-                    hue=0.1,
-                ),
+                [
+                    transforms_v2.ColorJitter(
+                        brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.2,
+                        hue=0.1,
+                    )
+                ],
                 p=0.8,
             ),
             transforms_v2.RandomPosterize(bits=6, p=0.3),
             transforms_v2.RandomSolarize(threshold=0.65, p=0.3),
             transforms_v2.RandomApply(
-                transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.5, 1.2)),
+                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.5, 1.2))],
                 p=0.8,
             ),
             transforms_v2.RandomGrayscale(p=0.2),
