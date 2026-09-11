@@ -44,13 +44,15 @@ def _cut_image_and_fix_bboxes(img, bboxes):
         # Discard bbox if remaining width is small
         if box_remain < (box_width / 16):
             continue
-        cut_bboxes.append((
-            class_name,
-            xmin,
-            ymin - diff,
-            min(img_height, xmax),
-            ymax - diff,
-        ))
+        cut_bboxes.append(
+            (
+                class_name,
+                xmin,
+                ymin - diff,
+                min(img_height, xmax),
+                ymax - diff,
+            )
+        )
     return img.crop((0, diff, NORWAY_TARGET_SIZE, img_height)), cut_bboxes
 
 
@@ -76,7 +78,8 @@ def _get_bboxes_from_xml_label(label_path: Path):
 def _save_bboxes_to_annotation(bboxes, ann_save_path):
     label_lines = [
         "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
-            CLASS_INDEXES[cls_name], *coords,
+            CLASS_INDEXES[cls_name],
+            *coords,
         )
         for cls_name, *coords in bboxes
     ]
@@ -107,9 +110,9 @@ def _get_stratified_splits(
     pairs_by_class_group = defaultdict(list)
     for pair in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(pair[1])
-        class_group = tuple(sorted(frozenset(
-            CLASS_INDEXES[name] for name, *_ in bboxes
-        )))
+        class_group = tuple(
+            sorted(frozenset(CLASS_INDEXES[name] for name, *_ in bboxes))
+        )
         pairs_by_class_group[class_group].append(pair)
     train_pairs, valid_pairs, test_pairs = [], [], []
     total_size = train_size + valid_size + test_size
@@ -158,7 +161,8 @@ def _train_valid_test_split(
     if train_size < 0:
         raise ValueError(
             "Train size must be at least {} (proportion: {:.2f})".format(
-                len(test_samples), len(test_samples) / total_samples,
+                len(test_samples),
+                len(test_samples) / total_samples,
             )
         )
     inc_train, valid_split, test_split = _get_stratified_splits(
@@ -196,7 +200,8 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
         for img_path, label_path in train_split:
             img = Image.open(img_path)
             bboxes = (
-                [] if label_path is None
+                []
+                if label_path is None
                 else _get_bboxes_from_xml_label(label_path)
             )
             if country_folder.name == "Norway":
@@ -271,6 +276,7 @@ def run():
         return 0
     except Exception:
         import traceback
+
         traceback.print_exc()
         return 1
 

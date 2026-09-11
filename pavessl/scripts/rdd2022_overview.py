@@ -82,6 +82,7 @@ def run():
         return 0
     except Exception:
         import traceback
+
         traceback.print_exc()
         return 1
 

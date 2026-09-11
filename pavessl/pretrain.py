@@ -1,15 +1,15 @@
 import argparse
-from pathlib import Path
 import math
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import models
 
-import pavessl.utils as utils
+from pavessl import utils
 from pavessl.data import RDD2022, SSLMultiviewTransform
 
 
@@ -23,7 +23,9 @@ def pretrain(args):
         backbone.fc = nn.Identity()
     student = utils.ProjectionNetwork(backbone, args.projection_dim)
     teacher = utils.ProjectionNetwork(
-        backbone, args.projection_dim, head_norm_last_layer=True,
+        backbone,
+        args.projection_dim,
+        head_norm_last_layer=True,
     )
     if torch.cuda.is_available():
         device = torch.device(torch.cuda.current_device())
@@ -37,14 +39,14 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    train_ds, train_loader, valid_ds, valid_loader = _get_train_valid_data(args)
+    _, train_loader, _, _ = _get_train_valid_data(args)
     # Prepare loss function
     loss_fn = utils.SSLLoss(
         projection_dim=args.projection_dim,
         num_local_views=args.num_local_views,
         teacher_temp=args.teacher_temp,
         teacher_temp_start=args.teacher_temp_start,
-        teacher_temp_warmup_epochs=args.teacher_temp_warmup,
+        teacher_temp_warmup=args.teacher_temp_warmup,
         num_epochs=args.epochs,
         student_temp=args.student_temp,
         center_momentum=args.center_momentum,
@@ -132,7 +134,6 @@ def pretrain(args):
                 states_dict=states_dict,
             )
         # Run eval
-        pass
     # Save loss history and report duration
     np.savetxt(
         fname=(args.save_dir / "loss_history.csv"),
@@ -143,7 +144,6 @@ def pretrain(args):
     )
     train_duration = int(time.monotonic() - start_time)
     print(f"Training ended in {utils.get_time_string(train_duration)}!")
-    return
 
 
 def _train_one_epoch(
@@ -160,11 +160,17 @@ def _train_one_epoch(
     args,
 ):
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("loss", utils.SmoothedValue(fmt="({value:10.6f} / {local_avg:10.6f} avg)"))
+    metric_logger.add_meter(
+        "loss",
+        utils.SmoothedValue(fmt="({value:10.6f} / {local_avg:10.6f} avg)"),
+    )
     metric_logger.add_meter("lr", utils.SmoothedValue(fmt="{value:.2e}"))
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
-    header = f"Epoch: [{str(epoch).rjust(len(str(args.epochs)), '0')}/{args.epochs}]"
-    for it, (global_views, local_views) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    epoch_str = str(epoch).rjust(len(str(args.epochs)), "0")
+    header = f"Epoch: [{epoch_str}/{args.epochs}]"
+    for it, (global_views, local_views) in enumerate(
+        metric_logger.log_every(data_loader, 10, header)
+    ):
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
@@ -177,7 +183,12 @@ def _train_one_epoch(
         teacher_out = teacher(global_views)
         student_global_out = student(global_views)
         student_local_out = student(local_views)
-        loss = loss_fn(teacher_out, student_global_out, student_local_out, epoch)
+        loss = loss_fn(
+            teacher_out,
+            student_global_out,
+            student_local_out,
+            epoch,
+        )
         # Loss explosion, unstable training
         if not math.isfinite(loss.item()):
             raise SystemExit(f"Loss exploded with value {loss.item()}")
@@ -191,7 +202,8 @@ def _train_one_epoch(
         # EMA teacher update
         with torch.no_grad():
             m = momentum_schedule[it]
-            for param_stdt, param_tchr in zip(student.parameters(), teacher.parameters()):
+            param_pairs = zip(student.parameters(), teacher.parameters())
+            for param_stdt, param_tchr in param_pairs:
                 param_tchr.data.mul_(m).add_((1 - m) * param_stdt.detach().data)
         # Logging
         if device.type == "cuda":
@@ -206,7 +218,10 @@ def _train_one_epoch(
 def get_args_parser():
     parser = argparse.ArgumentParser()
     # Architecture/weights
-    # parser.add_argument("--archi", type=str, choices=["resnet50", "vits16"], default="resnet50")
+    # parser.add_argument(
+    #     "--archi", type=str,
+    #     choices=["resnet50", "vits16"], default="resnet50",
+    # )
     parser.add_argument("--dino-base", action="store_true")
     parser.add_argument("--projection-dim", type=int, default=16384)
     # Momentum coefficients
@@ -226,17 +241,32 @@ def get_args_parser():
     parser.add_argument("--lr-warmup-start", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.04)
     parser.add_argument("--weight-decay-end", type=float, default=0.4)
-    parser.add_argument("--optim", type=str, choices=["adamw", "sgd"], default="adamw")
+    parser.add_argument(
+        "--optim",
+        type=str,
+        choices=["adamw", "sgd"],
+        default="adamw",
+    )
     parser.add_argument("--freeze-last-layer", type=int, default=3)
     # Multi-view
     parser.add_argument("--global-size", type=int, default=448)
-    parser.add_argument("--global-scale", type=float, nargs=2, default=(0.6, 0.85))
+    parser.add_argument(
+        "--global-scale",
+        type=float,
+        nargs=2,
+        default=(0.6, 0.85),
+    )
     parser.add_argument("--local-size", type=int, default=224)
-    parser.add_argument("--local-scale", type=float, nargs=2, default=(0.125, 0.4))
+    parser.add_argument(
+        "--local-scale",
+        type=float,
+        nargs=2,
+        default=(0.125, 0.4),
+    )
     parser.add_argument("--num-local-views", type=int, default=2)
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
-    parser.add_argument("--save-dir", type=Path, default=Path("data/results/pretrain"))
+    parser.add_argument("--save-dir", type=Path, required=True)
     parser.add_argument("--checkpoint-freq", type=int, default=10)
     parser.add_argument("--num-workers", type=int, default=6)
     return parser
@@ -292,6 +322,7 @@ def run():
         return 0
     except Exception:
         import traceback
+
         traceback.print_exc()
         return 1
 

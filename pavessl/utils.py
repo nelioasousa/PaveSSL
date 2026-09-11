@@ -1,16 +1,15 @@
-from collections.abc import Iterable
-from numbers import Real
 import os
 import time
-import datetime
+from collections import defaultdict, deque
+from collections.abc import Iterable
+from numbers import Real
 from pathlib import Path
-from typing import Any, Literal
-from collections import deque, defaultdict
+from typing import Any
 
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 
 def set_random_seeds(seed: int = 42):
@@ -34,7 +33,9 @@ def _backbone_forward_pass(
     image_size: tuple[int, int] = (96, 96),
 ):
     x = torch.randn(
-        1, 3, *image_size,
+        1,
+        3,
+        *image_size,
         device=next(backbone.parameters()).device,
     )
     with torch.no_grad():
@@ -76,21 +77,24 @@ class ProjectionHead(torch.nn.Module):
                 nn.BatchNorm1d(hidden_dim),
                 nn.GELU(),
             ]
-            for _ in range(num_layers-2):
-                layers.extend([
-                    nn.Linear(hidden_dim, hidden_dim),
-                    nn.BatchNorm1d(hidden_dim),
-                    nn.GELU(),
-                ])
+            for _ in range(num_layers - 2):
+                layers.extend(
+                    [
+                        nn.Linear(hidden_dim, hidden_dim),
+                        nn.BatchNorm1d(hidden_dim),
+                        nn.GELU(),
+                    ]
+                )
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
         # self.apply(self._init_weights)
         self.last_layer = nn.utils.parametrizations.weight_norm(
             nn.Linear(bottleneck_dim, out_dim, bias=False)
         )
-        self.last_layer.parametrizations.weight.original0.data.fill_(1)
+        mag_weights = self.last_layer.parametrizations.weight.original0
+        mag_weights.data.fill_(1)
         if norm_last_layer:
-            self.last_layer.parametrizations.weight.original0.requires_grad = False
+            mag_weights.requires_grad = False
 
     def forward(self, x):
         x = self.mlp(x)
@@ -134,7 +138,7 @@ class SSLLoss(torch.nn.Module):
         num_local_views: int,
         teacher_temp: float,
         teacher_temp_start: float,
-        teacher_temp_warmup_epochs: int,
+        teacher_temp_warmup: int,
         num_epochs: int,
         student_temp: float,
         center_momentum: float,
@@ -144,12 +148,27 @@ class SSLLoss(torch.nn.Module):
         self.center_momentum = center_momentum
         self.num_local_crops = num_local_views
         self.register_buffer("center", torch.zeros(1, projection_dim))
-        self.teacher_temp_schedule = np.concatenate((
-            np.linspace(teacher_temp_start, teacher_temp, teacher_temp_warmup_epochs),
-            np.full(num_epochs - teacher_temp_warmup_epochs, fill_value=teacher_temp),
-        ))
+        self.teacher_temp_schedule = np.concatenate(
+            [
+                np.linspace(
+                    teacher_temp_start,
+                    teacher_temp,
+                    teacher_temp_warmup,
+                ),
+                np.full(
+                    num_epochs - teacher_temp_warmup,
+                    fill_value=teacher_temp,
+                ),
+            ]
+        )
 
-    def forward(self, teacher_out, student_global_out, student_local_out, epoch):
+    def forward(
+        self,
+        teacher_out,
+        student_global_out,
+        student_local_out,
+        epoch,
+    ):
         # Student sharpening
         student_global_out = student_global_out / self.student_temp
         student_global_out = student_global_out.chunk(2)
@@ -174,12 +193,14 @@ class SSLLoss(torch.nn.Module):
         ## Teacher global x Student local
         for student_i_local in student_local_out:
             total_loss += torch.sum(
-                -centered[0] * F.log_softmax(student_i_local, dim=-1), dim=-1,
+                -centered[0] * F.log_softmax(student_i_local, dim=-1),
+                dim=-1,
             ).mean()
             total_loss += torch.sum(
-                -centered[1] * F.log_softmax(student_i_local, dim=-1), dim=-1,
+                -centered[1] * F.log_softmax(student_i_local, dim=-1),
+                dim=-1,
             ).mean()
-        total_loss /= (2 * self.num_local_crops + 2)
+        total_loss /= 2 * self.num_local_crops + 2
         # Update center
         self.update_center(teacher_out)
         return total_loss
@@ -187,7 +208,9 @@ class SSLLoss(torch.nn.Module):
     def update_center(self, teacher_output):
         batch_center = teacher_output.mean(dim=0, keepdim=True)
         # EMA update
-        self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
+        self.center = self.center * self.center_momentum + batch_center * (
+            1 - self.center_momentum
+        )
 
 
 def get_params_groups(model: nn.Module):
@@ -201,7 +224,10 @@ def get_params_groups(model: nn.Module):
             dont_regularize.append(param)
         else:
             regularize.append(param)
-    return [{'params': regularize}, {'params': dont_regularize, 'weight_decay': 0.0}]
+    return [
+        {"params": regularize},
+        {"params": dont_regularize, "weight_decay": 0.0},
+    ]
 
 
 def cosine_scheduler(
@@ -210,12 +236,13 @@ def cosine_scheduler(
     epochs: int,
     niter_per_ep: int,
     warmup_epochs: int = 0,
-    start_warmup_value: float = 0.0
+    start_warmup_value: float = 0.0,
 ):
     warmup_epochs = max(0, warmup_epochs)
     warmup_iters = warmup_epochs * niter_per_ep
     iters = np.arange(epochs * niter_per_ep - warmup_iters)
-    schedule = final_value + 0.5 * (base_value - final_value) * (1 + np.cos(np.pi * iters / len(iters)))
+    schedule = 1 + np.cos(np.pi * iters / len(iters))
+    schedule = final_value + 0.5 * (base_value - final_value) * schedule
     if not warmup_epochs:
         return schedule
     warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
@@ -266,7 +293,7 @@ def restart_from_checkpoint(
         run_variables[var_name] = checkpoint[var_name]
 
 
-class SmoothedValue():
+class SmoothedValue:
     def __init__(
         self,
         window_size: int | None = 20,
@@ -280,10 +307,8 @@ class SmoothedValue():
         self.fmt = fmt
 
     def update(self, value: Real):
-        if value > self.max_value:
-            self.max_value = value
-        if value < self.min_value:
-            self.min_value = value
+        self.max_value = max(self.max_value, value)
+        self.min_value = min(self.min_value, value)
         self.deque.append(value)
         self.count += 1
         self.total += value
@@ -321,9 +346,9 @@ class SmoothedValue():
             local_avg=self.local_avg,
             global_avg=self.global_avg,
             local_max=self.local_max,
-            global_max = self.global_max,
+            global_max=self.global_max,
             local_min=self.local_min,
-            global_min = self.global_min,
+            global_min=self.global_min,
             value=self.value,
         )
 
@@ -334,14 +359,13 @@ def get_time_string(seconds: int):
     # days, hours = divmod(hours, 24)
     time_string = " ".join(
         f"{v:02d}{k}"
-        for k, v
-        in (("h", hours), ("m", minutes), ("s", seconds))
+        for k, v in (("h", hours), ("m", minutes), ("s", seconds))
         # in (("d", days), ("h", hours), ("m", minutes), ("s", seconds))
     )
     return time_string
 
 
-class MetricLogger():
+class MetricLogger:
     MB = 1024.0 * 1024.0
 
     def __init__(self, delimiter: str = "\t"):
@@ -360,10 +384,7 @@ class MetricLogger():
         self.meters[name] = meter
 
     def __str__(self):
-        logger_str = [
-            f"{name}: {meter}"
-            for name, meter in self.meters.items()
-        ]
+        logger_str = [f"{name}: {meter}" for name, meter in self.meters.items()]
         return self.delimiter.join(logger_str)
 
     def log_every(
@@ -373,7 +394,6 @@ class MetricLogger():
         header: str = "",
         cpu_training: bool = False,
     ):
-        i = 0
         start_time = time.monotonic()
         end_time = start_time
         iter_duration = SmoothedValue(fmt="{value:7.3f}")
@@ -390,30 +410,35 @@ class MetricLogger():
         if cuda_training:
             log_msg.append("mem: {memory:.0f} MB")
         log_msg = self.delimiter.join(log_msg)
-        for item in iterable:
+        for i, item in enumerate(iterable):
             data_duration.update(time.monotonic() - end_time)
             yield item
             iter_duration.update(time.monotonic() - end_time)
             if not (i % print_freq) or i == (len(iterable) - 1):
                 eta_seconds = iter_duration.global_avg * (len(iterable) - i - 1)
                 eta_string = get_time_string(int(eta_seconds))
-                print(log_msg.format(
-                    i+1,
-                    len(iterable),
-                    eta=f"({eta_string})",
-                    meters=str(self),
-                    time=str(iter_duration),
-                    data=str(data_duration),
-                    memory=(
-                        torch.cuda.max_memory_allocated() / self.MB
-                        if cuda_training
-                        else None
-                    ),
-                ))
-            i += 1
+                print(
+                    log_msg.format(
+                        i + 1,
+                        len(iterable),
+                        eta=f"({eta_string})",
+                        meters=str(self),
+                        time=str(iter_duration),
+                        data=str(data_duration),
+                        memory=(
+                            torch.cuda.max_memory_allocated() / self.MB
+                            if cuda_training
+                            else None
+                        ),
+                    )
+                )
             end_time = time.monotonic()
         total_time = time.monotonic() - start_time
         total_time_str = get_time_string(int(total_time))
-        print('{} Total time: {} ({:.6f} s/it)'.format(
-            header, total_time_str, total_time / len(iterable),
-        ))
+        print(
+            "{} Total time: {} ({:.6f} s/it)".format(
+                header,
+                total_time_str,
+                total_time / len(iterable),
+            )
+        )

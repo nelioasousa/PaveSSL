@@ -1,14 +1,14 @@
+from itertools import accumulate
 from pathlib import Path
 from typing import Literal
-from itertools import accumulate
 
 import torch
+import torchvision.transforms.v2 as transforms_v2
+import torchvision.transforms.v2.functional as F
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import Transform, query_size
-import torchvision.transforms.v2 as transforms_v2
-import torchvision.transforms.v2.functional as F
 
 from pavessl.utils import load_bboxes
 
@@ -45,8 +45,9 @@ class RDD2022(Dataset):
             self.images = {
                 country: [
                     f"{label.stem}.jpg"
-                    for label
-                    in (data_path / f"{country}/{split}/annotations").iterdir()
+                    for label in (
+                        data_path / f"{country}/{split}/annotations"
+                    ).iterdir()
                 ]
                 for country in countries
             }
@@ -54,16 +55,16 @@ class RDD2022(Dataset):
             self.images = {
                 country: [
                     image.name
-                    for image
-                    in (data_path / f"{country}/{split}/images").iterdir()
+                    for image in (
+                        data_path / f"{country}/{split}/images"
+                    ).iterdir()
                 ]
                 for country in countries
             }
-        self.acc_counts = list(accumulate(
-            len(self.images[country]) for country in countries
-        ))
+        self.acc_counts = list(
+            accumulate(len(self.images[country]) for country in countries)
+        )
         self.acc_counts.insert(0, 0)
-        return
 
     def __len__(self):
         return self.acc_counts[-1]
@@ -85,8 +86,10 @@ class RDD2022(Dataset):
         bboxes = load_bboxes(label_path)
         return {
             "boxes": tv_tensors.BoundingBoxes(
-                bboxes["boxes"], format="XYXY",
-                canvas_size=dim, clamping_mode="hard",
+                bboxes["boxes"],
+                format="XYXY",
+                canvas_size=dim,
+                clamping_mode="hard",
             ),
             "labels": torch.tensor(bboxes["labels"]),
         }
@@ -143,7 +146,10 @@ class SSLMultiviewTransform(torch.nn.Module):
         self.local_size = local_size
         self.num_local_views = num_local_views
         augs = self.get_multiview_augmentations(
-            global_size, global_scale, local_size, local_scale,
+            global_size,
+            global_scale,
+            local_size,
+            local_scale,
         )
         self.teacher_global = augs[0]
         self.student_global = augs[1]
@@ -151,9 +157,9 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     def forward(self, img, label=None):
         views = [self.teacher_global(img), self.student_global(img)]
-        views.extend([
-            self.student_local(img) for _ in range(self.num_local_views)
-        ])
+        views.extend(
+            [self.student_local(img) for _ in range(self.num_local_views)]
+        )
         return views, label
 
     @staticmethod
@@ -164,8 +170,8 @@ class SSLMultiviewTransform(torch.nn.Module):
         local_scale: tuple[float, float] = (0.05, 0.4),
     ):
         # Random cropping
-        global_crop = BottomRandomResizedCrop(size=global_size, scale=global_scale)
-        local_crop = BottomRandomResizedCrop(size=local_size, scale=local_scale)
+        global_crop = BottomRandomResizedCrop(global_size, global_scale)
+        local_crop = BottomRandomResizedCrop(local_size, local_scale)
         # Geometric transformations
         geometric_transfs = [
             transforms_v2.RandomHorizontalFlip(p=0.5),
@@ -197,24 +203,30 @@ class SSLMultiviewTransform(torch.nn.Module):
         ]
         # Student
         ## Global
-        student_global_aug = transforms_v2.Compose([
-            global_crop,
-            *geometric_transfs,
-            *photometric_transfs,
-        ])
+        student_global_aug = transforms_v2.Compose(
+            [
+                global_crop,
+                *geometric_transfs,
+                *photometric_transfs,
+            ]
+        )
         ## Local
-        student_local_aug = transforms_v2.Compose([
-            local_crop,
-            *geometric_transfs,
-            *photometric_transfs,
-        ])
+        student_local_aug = transforms_v2.Compose(
+            [
+                local_crop,
+                *geometric_transfs,
+                *photometric_transfs,
+            ]
+        )
         # Teacher
-        teacher_aug = transforms_v2.Compose([
-            global_crop,
-            *geometric_transfs,
-            photometric_transfs[0],
-            *photometric_transfs[-2:],
-        ])
+        teacher_aug = transforms_v2.Compose(
+            [
+                global_crop,
+                *geometric_transfs,
+                photometric_transfs[0],
+                *photometric_transfs[-2:],
+            ]
+        )
         return teacher_aug, student_global_aug, student_local_aug
 
     @staticmethod
@@ -225,12 +237,27 @@ class SSLMultiviewTransform(torch.nn.Module):
         # Collating global views
         global_dim = batch[0][0][0].shape[-3:]
         global_views = torch.empty((2 * B, *global_dim), dtype=tensor_dtype)
-        torch.stack([sample[0][0] for sample in batch], dim=0, out=global_views[:B])
-        torch.stack([sample[0][1] for sample in batch], dim=0, out=global_views[B:])
+        torch.stack(
+            [sample[0][0] for sample in batch],
+            dim=0,
+            out=global_views[:B],
+        )
+        torch.stack(
+            [sample[0][1] for sample in batch],
+            dim=0,
+            out=global_views[B:],
+        )
         # Collating local views
         local_dim = batch[0][0][-1].shape[-3:]
         num_local_views = len(batch[0][0]) - 2
-        local_views = torch.empty((num_local_views * B, *local_dim), dtype=tensor_dtype)
+        local_views = torch.empty(
+            (num_local_views * B, *local_dim),
+            dtype=tensor_dtype,
+        )
         for i in range(num_local_views):
-            torch.stack([sample[0][i+2] for sample in batch], dim=0, out=local_views[i*B:(i+1)*B])
+            torch.stack(
+                [sample[0][i + 2] for sample in batch],
+                dim=0,
+                out=local_views[i * B : (i + 1) * B],
+            )
         return global_views, local_views
