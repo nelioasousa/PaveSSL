@@ -116,7 +116,7 @@ class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
 
     def make_params(self, flat_inputs):
         h, _ = query_size(flat_inputs)
-        thres = h * self._bottom_threshold
+        thres = round(h * self._bottom_threshold)
         params = super().make_params(flat_inputs)
         if params["top"] >= thres:
             return params
