@@ -222,17 +222,18 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     @staticmethod
     def multiview_collate_fn(batch):
+        # `batch` = [([v1, ..., vn], None), ...]
         B = len(batch)  # batch size
-        tensor_dtype = batch[0][0].dtype
+        tensor_dtype = batch[0][0][0].dtype
         # Collating global views
-        global_dim = batch[0][0].shape[-3:]
+        global_dim = batch[0][0][0].shape[-3:]
         global_views = torch.empty((2 * B, *global_dim), dtype=tensor_dtype)
-        torch.stack([views[0] for views in batch], dim=0, out=global_views[:B])
-        torch.stack([views[1] for views in batch], dim=0, out=global_views[B:])
+        torch.stack([sample[0][0] for sample in batch], dim=0, out=global_views[:B])
+        torch.stack([sample[0][1] for sample in batch], dim=0, out=global_views[B:])
         # Collating local views
-        local_dim = batch[0][-1].shape[-3:]
-        num_local_views = len(batch[0]) - 2
+        local_dim = batch[0][0][-1].shape[-3:]
+        num_local_views = len(batch[0][0]) - 2
         local_views = torch.empty((num_local_views * B, *local_dim), dtype=tensor_dtype)
         for i in range(num_local_views):
-            torch.stack([views[i+2] for views in batch], dim=0, out=local_views[i*B:(i+1)*B])
+            torch.stack([sample[0][i+2] for sample in batch], dim=0, out=local_views[i*B:(i+1)*B])
         return global_views, local_views
