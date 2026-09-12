@@ -97,7 +97,9 @@ def pretrain(args):
     loss_history = to_restore["loss_history"]
     # Training
     start_time = time.monotonic()
+    teacher.train()  # Necessary for BatchNorm updates
     for epoch in range(to_restore["epoch"], args.epochs):
+        student.train()
         loss_log = _train_one_epoch(
             student=student,
             teacher=teacher,
@@ -133,7 +135,8 @@ def pretrain(args):
                 save_file=args.save_dir / f"checkpoint_{epoch:04d}.pth",
                 states_dict=states_dict,
             )
-        # Run eval
+        # # Run eval
+        # student.eval()
     # Save loss history and report duration
     np.savetxt(
         fname=(args.save_dir / "loss_history.csv"),
