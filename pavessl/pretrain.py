@@ -39,7 +39,7 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    _, train_loader, _, _ = _get_train_valid_data(args)
+    _, train_loader = _get_train_data(args)
     # Prepare loss function
     loss_fn = utils.SSLLoss(
         projection_dim=args.projection_dim,
@@ -275,7 +275,7 @@ def get_args_parser():
     return parser
 
 
-def _get_train_valid_data(args):
+def _get_train_data(args):
     multiview_trans = SSLMultiviewTransform(
         global_size=args.global_size,
         global_scale=args.global_scale,
@@ -299,22 +299,7 @@ def _get_train_valid_data(args):
         pin_memory=False,
         drop_last=True,
     )
-    valid_dataset = RDD2022(
-        data_path=args.data,
-        task="classification",
-        countries="all",
-        split="valid",
-        transform=multiview_trans.teacher_global,
-    )
-    valid_loader = DataLoader(
-        dataset=valid_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=False,
-        drop_last=False,
-    )
-    return train_dataset, train_loader, valid_dataset, valid_loader
+    return train_dataset, train_loader
 
 
 def run():
