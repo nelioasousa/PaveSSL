@@ -97,9 +97,7 @@ def pretrain(args):
     loss_history = to_restore["loss_history"]
     # Training
     start_time = time.monotonic()
-    teacher.train()  # Necessary for BatchNorm updates
     for epoch in range(to_restore["epoch"], args.epochs):
-        student.train()
         loss_log = _train_one_epoch(
             student=student,
             teacher=teacher,
@@ -162,6 +160,8 @@ def _train_one_epoch(
     device,
     args,
 ):
+    student.train()
+    teacher.train()  # Necessary for BatchNorm updates
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter(
         "loss",
