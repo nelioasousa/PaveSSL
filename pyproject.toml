@@ -20,7 +20,7 @@ dev = ["ruff"]
 Source = "https://github.com/nelioasousa/PaveSSL"
 
 [project.scripts]
-pretrain = "pavessl.pretrain:run"
+ssl-pretrain = "pavessl.scripts.ssl_pretrain:run"
 data-overview = "pavessl.scripts.rdd2022_overview:run"
 prepare-data = "pavessl.scripts.rdd2022_prepare:run"
 
