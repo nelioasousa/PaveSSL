@@ -54,6 +54,14 @@ def get_out_shape(
         model.train(training)
 
 
+@torch.no_grad()
+def _init_linear(m):
+    if isinstance(m, nn.Linear):
+        nn.init.trunc_normal_(m.weight, std=0.02)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, val=0)
+
+
 class ProjectionHead(torch.nn.Module):
     def __init__(
         self,
@@ -84,7 +92,7 @@ class ProjectionHead(torch.nn.Module):
                 )
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
-        # self.apply(self._init_weights)
+        self.apply(_init_linear)
         self.last_layer = nn.utils.parametrizations.weight_norm(
             nn.Linear(bottleneck_dim, out_dim, bias=False)
         )
