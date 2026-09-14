@@ -2,6 +2,7 @@ from itertools import accumulate
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms_v2
 import torchvision.transforms.v2.functional as F
@@ -11,6 +12,19 @@ from torchvision import tv_tensors
 from torchvision.transforms.v2 import Transform, query_size
 
 from pavessl.utils import load_bboxes
+
+
+def get_rdd2022_countries(level: Literal[1, 2, 3] = 3):
+    level = min(max(level, 1), 3)
+    countries = [
+        "China_Drone",
+        "China_MotorBike",
+        "Japan",
+        "Norway",
+        "Czech",
+        "United_States",
+    ]
+    return countries[:(2*level)]
 
 
 class RDD2022(Dataset):
@@ -261,3 +275,61 @@ class SSLMultiviewTransform(torch.nn.Module):
                 out=local_views[i * B : (i + 1) * B],
             )
         return global_views, local_views
+
+
+class MultiBottomSplit(transforms_v2.Transform):
+    def __init__(self, size: int, num_crops: int = 3, overlap: float = 0.0):
+        super().__init__()
+        if num_crops < 2:
+            raise ValueError("Only make sense for 2 or more crops.")
+        if size < 1:
+            raise ValueError("`size` must be positive.")
+        if overlap >= 1.0:
+            raise ValueError("`overlap` can not be >= 1.0")
+        self._size = size
+        self._num_crops = num_crops
+        self._overlap = overlap
+        self._local_cache = dict()
+
+    def make_params(self, flat_inputs):
+        h, w = query_size(flat_inputs)
+        try:
+            crop_size = self._local_cache[w]
+        except KeyError:
+            crop_size = min(h, self._compute_split_crop_size(w))
+            self._local_cache[w] = crop_size
+        top = h - crop_size
+        crops = [
+            dict(top=top, left=int(left), height=crop_size, width=crop_size)
+            for left in np.linspace(0, w - crop_size, self._num_crops)
+        ]
+        return {"crops": crops}
+
+    def transform(self, inpt, params):
+        if not isinstance(inpt, torch.Tensor) or len(inpt.shape) == 1:
+            return inpt
+        crops = [
+            transforms_v2.functional.resized_crop(
+                inpt=inpt,
+                size=self._size,
+                **crop,
+            )
+            for crop in params["crops"]
+        ]
+        return crops
+
+    def _compute_split_crop_size(self, width: int):
+        n = self._num_crops
+        overlap = self._overlap
+        crop_size_no_overlap = int(width / n)
+        if overlap == 0.0:
+            return crop_size_no_overlap
+        crop_size = crop_size_no_overlap
+        increment = 1 if overlap > 0.0 else -1
+        overlap = abs(overlap)
+        while True:
+            actual_overlap = (n * crop_size - width) / (crop_size * (n - 1))
+            if actual_overlap >= overlap:
+                break
+            crop_size += increment
+        return crop_size
