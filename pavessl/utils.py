@@ -28,33 +28,30 @@ def load_bboxes(annotation_path: Path):
     return bboxes
 
 
-def _backbone_forward_pass(
-    backbone: torch.nn.Module,
+def _forward_pass(
+    model: torch.nn.Module,
     image_size: tuple[int, int] = (96, 96),
 ):
     x = torch.randn(
         1,
         3,
         *image_size,
-        device=next(backbone.parameters()).device,
+        device=next(model.parameters()).device,
     )
     with torch.no_grad():
-        out = backbone(x)
-    return out
+        return model(x)
 
 
-def get_backbone_out_dim(backbone: torch.nn.Module) -> int:
-    training = backbone.training
+def get_out_shape(
+    model: torch.nn.Module,
+    image_size: tuple[int, int] = (96, 96),
+) -> tuple[int, ...]:
+    training = model.training
     try:
-        backbone.eval()
-        shp = _backbone_forward_pass(backbone).shape
-        if len(shp) != 2:
-            raise ValueError(
-                f"Backbone output must have shape (batch, N), got {shp}"
-            )
-        return shp[-1]
+        model.eval()
+        return tuple(_forward_pass(model, image_size).shape)
     finally:
-        backbone.train(training)
+        model.train(training)
 
 
 class ProjectionHead(torch.nn.Module):
@@ -114,10 +111,15 @@ class ProjectionNetwork(torch.nn.Module):
         head_norm_last_layer: bool = False,
     ):
         super().__init__()
-        backbone_out_dim = get_backbone_out_dim(backbone)
+        backbone_out_shp = get_out_shape(backbone)
+        if len(backbone_out_shp) != 2:
+            raise ValueError(
+                "Backbone output must have shape "
+                f"(batch, N), got {backbone_out_shp}"
+            )
         self.backbone = backbone
         self.head = ProjectionHead(
-            in_dim=backbone_out_dim,
+            in_dim=backbone_out_shp[-1],
             out_dim=projection_dim,
             num_layers=head_num_layers,
             hidden_dim=head_hidden_dim,
