@@ -25,7 +25,7 @@ def load_resnet50_backbone(state_file: Path, checkpoint_key: str | None = None):
 
 
 @torch.no_grad()
-def compute_features(
+def _compute_features(
     model: torch.nn.Module,
     dataset: torch.utils.data.Dataset,
     batch_size: int,
@@ -43,8 +43,10 @@ def compute_features(
     )
     device = next(model.parameters()).device
     features = None
-    multihot_labels = None
-    for i, (images, labels) in enumerate(metric_logger.log_every(data_loader, 10)):
+    labels = None
+    for i, (images, targets) in enumerate(
+        metric_logger.log_every(data_loader, 10)
+    ):
         images = [imgs.to(device, non_blocking=True) for imgs in images]
         feats = torch.stack([model(imgs) / len(images) for imgs in images])
         feats = feats.sum(dim=0, keepdim=False)
@@ -54,16 +56,98 @@ def compute_features(
                 dtype=feats.dtype,
                 device=device,
             )
-            multihot_labels = torch.empty(
-                (len(dataset), labels.shape[1]),
-                dtype=labels.dtype,
+            labels = torch.empty(
+                (len(dataset), targets.shape[-1]),
+                dtype=targets.dtype,
                 device=device,
             )
         start = i * batch_size
-        index = torch.arange(start, start + len(labels), dtype=torch.long, device=device)
-        features.index_copy_(dim=0, index=index, source=feats)
-        multihot_labels.index_copy_(dim=0, index=index, source=labels)
-    return features.detach(), multihot_labels.detach()
+        end = start + len(targets)
+        features[start:end].copy_(feats)
+        labels[start:end].copy_(targets)
+    return features.detach(), labels.detach()
+
+
+def _get_features_and_labels(
+    model: torch.nn.Module,
+    data_path: Path,
+    target_folder: str,
+    image_size: int,
+    num_split_crops: int,
+    crops_overlap: float,
+    batch_size: int,
+    num_workers: int,
+    pin_memory: bool = False,
+):
+    transform = MultiBottomSplit(
+        size=image_size,
+        num_crops=num_split_crops,
+        overlap=crops_overlap,
+    )
+    dataset = RDD2022(
+        data_path=data_path,
+        countries=[target_folder],
+        split="train",
+        task="classification",
+        transform=transform,
+        independent_labels=True,
+    )
+    train_features, train_labels = _compute_features(
+        model=model,
+        dataset=dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    dataset = RDD2022(
+        data_path=data_path,
+        countries=[target_folder],
+        split="valid",
+        task="classification",
+        transform=transform,
+        independent_labels=True,
+    )
+    valid_features, valid_labels = _compute_features(
+        model=model,
+        dataset=dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    return train_features, train_labels, valid_features, valid_labels
+
+
+def eval(
+    model: torch.nn.Module,
+    data_path: Path,
+    target_folder: str,
+    image_size: int,
+    num_split_crops: int,
+    crops_overlap: float,
+    batch_size: int,
+    num_workers: int,
+    pin_memory: bool = False,
+):
+    classes = [
+        line.split(maxsplit=1)[1]
+        for line in (
+            data_path / target_folder / "classes.txt"
+        ).read_text().splitlines()
+    ]
+    feats_and_labels = _get_features_and_labels(
+        model=model,
+        data_path=data_path,
+        target_folder=target_folder,
+        image_size=image_size,
+        num_split_crops=num_split_crops,
+        crops_overlap=crops_overlap,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    train_feats, train_labels, valid_feats, valid_labels = feats_and_labels
+    ...
+    return
 
 
 def knn_eval(args):
@@ -74,37 +158,7 @@ def knn_eval(args):
         device = torch.device("cpu")
     backbone.to(device=device)
     target_countries = get_rdd2022_countries(args.countries_subset)
-    transform = MultiBottomSplit(
-        size=args.crop_size,
-        num_crops=args.num_crops,
-        overlap=args.crops_overlap,
-    )
-    train_dataset = RDD2022(
-        data_path=args.data,
-        task="classification",
-        countries=target_countries,
-        split="train",
-        transform=transform,
-    )
-    train_features = compute_features(
-        model=backbone,
-        dataset=train_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-    valid_dataset = RDD2022(
-        data_path=args.data,
-        task="classification",
-        countries=target_countries,
-        split="train",
-        transform=transform,
-    )
-    valid_features = compute_features(
-        model=backbone,
-        dataset=valid_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
+    ...
     return
 
 
@@ -130,7 +184,12 @@ def get_args_parser():
     # Data and save locations
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument("--save-dir", type=Path, required=True)
-    parser.add_argument("--countries-subset", choices=[1, 2, 3], type=int, default=3)
+    parser.add_argument(
+        "--countries-subset",
+        choices=[1, 2, 3],
+        type=int,
+        default=3,
+    )
     # Others
     parser.add_argument("--use-cuda", type=bool, action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)
