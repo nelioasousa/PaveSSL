@@ -35,6 +35,7 @@ class RDD2022(Dataset):
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
         transform: Transform | None = None,
+        independent_labels: bool = False,
     ):
         data_path = data_path.resolve()
         if not data_path.is_dir():
@@ -48,12 +49,27 @@ class RDD2022(Dataset):
             unknown = frozenset(countries).difference(all_countries)
             if unknown:
                 raise ValueError(f"Unknown country folders: {list(unknown)}")
+        countries.sort()
         self.base = data_path
         self.split = split
         self.countries = countries
         self.task = task
         self.transform = transform
         self.classes = (data_path / "classes.txt").read_text().splitlines()
+        self.independent_labels = independent_labels
+        if independent_labels:
+            self.local_index_map = {}
+            self.local_classes = {}
+            for country in countries:
+                cls_file = data_path / country / "classes.txt"
+                cls_idxs, cls_names = list(zip(*(
+                    line.split(maxsplit=1)
+                    for line in cls_file.read_text().splitlines()
+                )))
+                self.local_classes[country] = cls_names
+                self.local_index_map[country] = {
+                    int(idx): i for i, idx in enumerate(cls_idxs)
+                }
         # Not all train images have annotations
         if split == "train" and task != "ssl":
             self.images = {
@@ -75,9 +91,8 @@ class RDD2022(Dataset):
                 ]
                 for country in countries
             }
-        self.acc_counts = list(
-            accumulate(len(self.images[country]) for country in countries)
-        )
+        self.counts = [len(self.images[country]) for country in countries]
+        self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
 
     def __len__(self):
@@ -89,15 +104,24 @@ class RDD2022(Dataset):
                 return self.countries[i], index - self.acc_counts[i]
         raise IndexError("Out of range")
 
-    def _load_label_for_classification(self, label_path):
+    def _load_label_for_classification(self, label_path, country):
         labels = load_bboxes(label_path)["labels"]
         # Multi-hot encoding
-        onehot = [0] * len(self.classes)
-        onehot[labels] = 1
-        return torch.tensor(onehot)
+        if self.independent_labels:
+            labels = [self.local_index_map[country][idx] for idx in labels]
+            multihot = torch.zeros(len(self.local_classes[country]))
+        else:
+            multihot = torch.zeros(len(self.classes))
+        return multihot.index_fill_(
+            dim=0, index=torch.tensor(labels, dtype=torch.long), value=1.0,
+        )
 
-    def _load_label_for_detection(self, label_path, dim):
+    def _load_label_for_detection(self, label_path, dim, country):
         bboxes = load_bboxes(label_path)
+        if self.independent_labels:
+            bboxes["labels"] = [
+                self.local_index_map[country][idx] for idx in bboxes["labels"]
+            ]
         return {
             "boxes": tv_tensors.BoundingBoxes(
                 bboxes["boxes"],
@@ -105,7 +129,7 @@ class RDD2022(Dataset):
                 canvas_size=dim,
                 clamping_mode="hard",
             ),
-            "labels": torch.tensor(bboxes["labels"]),
+            "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
         }
 
     def __getitem__(self, index):
@@ -120,9 +144,11 @@ class RDD2022(Dataset):
             return self.transform(image)
         label_path = split_dir / f"annotations/{image_name[:-3]}txt"
         if self.task == "classification":
-            label = self._load_label_for_classification(label_path)
+            label = self._load_label_for_classification(label_path, country)
         else:
-            label = self._load_label_for_detection(label_path, image.shape[-2:])
+            label = self._load_label_for_detection(
+                label_path, image.shape[-2:], country,
+            )
         if self.transform is None:
             return image, label
         return self.transform(image, label)
