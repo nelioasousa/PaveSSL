@@ -15,7 +15,8 @@ from pavessl.data import RDD2022, SSLMultiviewTransform
 
 def pretrain(args):
     utils.set_random_seeds(42)
-    args.save_dir.mkdir(exist_ok=True, parents=True)
+    save_dir = args.save_dir / args.save_folder
+    save_dir.mkdir(exist_ok=True, parents=True)
     if args.dino_base:
         backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
     else:
@@ -87,7 +88,7 @@ def pretrain(args):
         "loss_history": np.zeros((args.epochs, 3), dtype=np.float32),
     }
     utils.restart_from_checkpoint(
-        args.save_dir / "checkpoint.pth",
+        save_dir / "checkpoint.pth",
         run_variables=to_restore,
         student=student,
         teacher=teacher,
@@ -125,19 +126,19 @@ def pretrain(args):
             "loss": loss_fn.state_dict(),
         }
         utils.save_states(
-            save_file=args.save_dir / "checkpoint.pth",
+            save_file=save_dir / "checkpoint.pth",
             states_dict=states_dict,
         )
         if args.checkpoint_freq and not (epoch % args.checkpoint_freq):
             utils.save_states(
-                save_file=args.save_dir / f"checkpoint_{epoch:04d}.pth",
+                save_file=save_dir / f"checkpoint_{epoch:04d}.pth",
                 states_dict=states_dict,
             )
         # # Run eval
         # student.eval()
     # Save loss history and report duration
     np.savetxt(
-        fname=(args.save_dir / "loss_history.csv"),
+        fname=save_dir / "loss_history.csv",
         X=loss_history,
         delimiter=",",
         fmt="%24.10e",
@@ -269,7 +270,10 @@ def get_args_parser():
     parser.add_argument("--num-local-views", type=int, default=2)
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
-    parser.add_argument("--save-dir", type=Path, required=True)
+    parser.add_argument(
+        "--save-dir", type=Path, default=Path("data/results/ssl_pretrain"),
+    )
+    parser.add_argument("--save-folder", type=str, required=True)
     parser.add_argument("--checkpoint-freq", type=int, default=10)
     parser.add_argument("--num-workers", type=int, default=6)
     return parser
