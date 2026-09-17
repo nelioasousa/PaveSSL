@@ -14,9 +14,9 @@ from torchvision.transforms.v2 import Transform, query_size
 from pavessl.utils import load_bboxes
 
 
-def get_rdd2022_countries(level: Literal[1, 2, 3] = 3):
-    level = min(max(level, 1), 3)
-    countries = [
+def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
+    subset_level = min(max(subset_level, 1), 3)
+    sources = [
         "China_Drone",
         "China_MotorBike",
         "Japan",
@@ -24,14 +24,14 @@ def get_rdd2022_countries(level: Literal[1, 2, 3] = 3):
         "Czech",
         "United_States",
     ]
-    return countries[:(2*level)]
+    return sources[:(2*subset_level)]
 
 
 class RDD2022(Dataset):
     def __init__(
         self,
         data_path: Path,
-        countries: str | list[str] | Literal["all"],
+        sources: str | list[str] | Literal["all"],
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
         transform: Transform | None = None,
@@ -40,19 +40,19 @@ class RDD2022(Dataset):
         data_path = data_path.resolve()
         if not data_path.is_dir():
             raise NotADirectoryError(f"Not a directory: {data_path}")
-        all_countries = [c.name for c in data_path.iterdir() if c.is_dir()]
-        if countries == "all":
-            countries = all_countries
+        all_sources = [s.name for s in data_path.iterdir() if s.is_dir()]
+        if sources == "all":
+            sources = all_sources
         else:
-            if isinstance(countries, str):
-                countries = [countries]
-            unknown = frozenset(countries).difference(all_countries)
+            if isinstance(sources, str):
+                sources = [sources]
+            unknown = frozenset(sources).difference(all_sources)
             if unknown:
-                raise ValueError(f"Unknown country folders: {list(unknown)}")
-        countries.sort()
+                raise ValueError(f"Unknown source folders: {list(unknown)}")
+        sources.sort()
         self.base = data_path
         self.split = split
-        self.countries = countries
+        self.sources = sources
         self.task = task
         self.transform = transform
         self.classes = (data_path / "classes.txt").read_text().splitlines()
@@ -60,38 +60,38 @@ class RDD2022(Dataset):
         if independent_labels:
             self.local_index_map = {}
             self.local_classes = {}
-            for country in countries:
-                cls_file = data_path / country / "classes.txt"
+            for source in sources:
+                cls_file = data_path / source / "classes.txt"
                 cls_idxs, cls_names = list(zip(*(
                     line.split(maxsplit=1)
                     for line in cls_file.read_text().splitlines()
                 )))
-                self.local_classes[country] = cls_names
-                self.local_index_map[country] = {
+                self.local_classes[source] = cls_names
+                self.local_index_map[source] = {
                     int(idx): i for i, idx in enumerate(cls_idxs)
                 }
         # Not all train images have annotations
         if split == "train" and task != "ssl":
             self.images = {
-                country: [
+                source: [
                     f"{label.stem}.jpg"
                     for label in (
-                        data_path / f"{country}/{split}/annotations"
+                        data_path / f"{source}/{split}/annotations"
                     ).iterdir()
                 ]
-                for country in countries
+                for source in sources
             }
         else:
             self.images = {
-                country: [
+                source: [
                     image.name
                     for image in (
-                        data_path / f"{country}/{split}/images"
+                        data_path / f"{source}/{split}/images"
                     ).iterdir()
                 ]
-                for country in countries
+                for source in sources
             }
-        self.counts = [len(self.images[country]) for country in countries]
+        self.counts = [len(self.images[source]) for source in sources]
         self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
 
@@ -101,26 +101,26 @@ class RDD2022(Dataset):
     def _compute_from_global_index(self, index):
         for i, acc in enumerate(self.acc_counts[1:]):
             if index < acc:
-                return self.countries[i], index - self.acc_counts[i]
+                return self.sources[i], index - self.acc_counts[i]
         raise IndexError("Out of range")
 
-    def _load_label_for_classification(self, label_path, country):
+    def _load_label_for_classification(self, label_path, source):
         labels = load_bboxes(label_path)["labels"]
         # Multi-hot encoding
         if self.independent_labels:
-            labels = [self.local_index_map[country][idx] for idx in labels]
-            multihot = torch.zeros(len(self.local_classes[country]))
+            labels = [self.local_index_map[source][idx] for idx in labels]
+            multihot = torch.zeros(len(self.local_classes[source]))
         else:
             multihot = torch.zeros(len(self.classes))
         return multihot.index_fill_(
             dim=0, index=torch.tensor(labels, dtype=torch.long), value=1.0,
         )
 
-    def _load_label_for_detection(self, label_path, dim, country):
+    def _load_label_for_detection(self, label_path, dim, source):
         bboxes = load_bboxes(label_path)
         if self.independent_labels:
             bboxes["labels"] = [
-                self.local_index_map[country][idx] for idx in bboxes["labels"]
+                self.local_index_map[source][idx] for idx in bboxes["labels"]
             ]
         return {
             "boxes": tv_tensors.BoundingBoxes(
@@ -133,9 +133,9 @@ class RDD2022(Dataset):
         }
 
     def __getitem__(self, index):
-        country, local_index = self._compute_from_global_index(index)
-        image_name = self.images[country][local_index]
-        split_dir = self.base / f"{country}/{self.split}"
+        source, local_index = self._compute_from_global_index(index)
+        image_name = self.images[source][local_index]
+        split_dir = self.base / f"{source}/{self.split}"
         image = Image.open(split_dir / f"images/{image_name}").convert("RGB")
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
@@ -144,10 +144,10 @@ class RDD2022(Dataset):
             return self.transform(image)
         label_path = split_dir / f"annotations/{image_name[:-3]}txt"
         if self.task == "classification":
-            label = self._load_label_for_classification(label_path, country)
+            label = self._load_label_for_classification(label_path, source)
         else:
             label = self._load_label_for_detection(
-                label_path, image.shape[-2:], country,
+                label_path, image.shape[-2:], source,
             )
         if self.transform is None:
             return image, label

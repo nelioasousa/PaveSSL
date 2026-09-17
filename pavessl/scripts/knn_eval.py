@@ -7,7 +7,7 @@ import torchvision
 import numpy as np
 from torch.utils.data import DataLoader
 
-from pavessl.data import get_rdd2022_countries
+from pavessl.data import get_rdd2022_sources
 from pavessl.data import MultiBottomSplit, RDD2022
 from pavessl.utils import MetricLogger
 
@@ -83,7 +83,7 @@ def _compute_features(
 def _get_features_and_labels(
     model: torch.nn.Module,
     data_path: Path,
-    target_country: str,
+    target_source: str,
     image_size: int,
     num_split_crops: int,
     crops_overlap: float,
@@ -97,7 +97,7 @@ def _get_features_and_labels(
     )
     dataset = RDD2022(
         data_path=data_path,
-        countries=[target_country],
+        sources=[target_source],
         split="train",
         task="classification",
         transform=transform,
@@ -108,11 +108,11 @@ def _get_features_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"(Valid) [{target_country}/train]",
+        header=f"(Valid) [{target_source}/train]",
     )
     dataset = RDD2022(
         data_path=data_path,
-        countries=[target_country],
+        sources=[target_source],
         split="valid",
         task="classification",
         transform=transform,
@@ -123,7 +123,7 @@ def _get_features_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"(Valid) [{target_country}/valid]",
+        header=f"(Valid) [{target_source}/valid]",
     )
     return train_features, train_labels, valid_features, valid_labels
 
@@ -134,7 +134,7 @@ def knn_eval_one(
     k: list[int],
     temperature: float,
     data_path: Path,
-    target_country: str,
+    target_source: str,
     image_size: int,
     num_split_crops: int,
     crops_overlap: float,
@@ -146,7 +146,7 @@ def knn_eval_one(
     feats_and_labels = _get_features_and_labels(
         model=model,
         data_path=data_path,
-        target_country=target_country,
+        target_source=target_source,
         image_size=image_size,
         num_split_crops=num_split_crops,
         crops_overlap=crops_overlap,
@@ -192,7 +192,7 @@ def knn_eval(
     distance_temperature: float,
     pred_threshold: float,
     data_path: Path,
-    target_countries: list[str],
+    target_sources: list[str],
     crop_size: int,
     num_crops: int,
     crops_overlap: float,
@@ -201,13 +201,13 @@ def knn_eval(
     simplified: bool = False,
 ):
     results = {}
-    for country in target_countries:
-        country_rsts = knn_eval_one(
+    for source in target_sources:
+        source_rsts = knn_eval_one(
             model=model,
             k=k,
             temperature=distance_temperature,
             data_path=data_path,
-            target_country=country,
+            target_source=source,
             image_size=crop_size,
             num_split_crops=num_crops,
             crops_overlap=crops_overlap,
@@ -216,12 +216,12 @@ def knn_eval(
             threshold=pred_threshold,
         )
         if simplified:
-            results[country] = {
+            results[source] = {
                 metric: values.mean(axis=1)
-                for metric, values in country_rsts.items()
+                for metric, values in source_rsts.items()
             }
         else:
-            results[country] = country_rsts
+            results[source] = source_rsts
     return results
 
 
@@ -232,14 +232,14 @@ def _main(args):
     else:
         device = torch.device("cpu")
     backbone.to(device=device)
-    target_countries = get_rdd2022_countries(args.countries_subset)
+    target_sources = get_rdd2022_sources(args.sources_subset)
     results = knn_eval(
         model=backbone,
         k=args.num_neighbours,
         distance_temperature=args.temperature,
         pred_threshold=args.threshold,
         data_path=args.data,
-        target_countries=target_countries,
+        target_sources=target_sources,
         crop_size=args.crop_size,
         num_crops=args.num_crops,
         crops_overlap=args.crops_overlap,
@@ -275,7 +275,7 @@ def get_args_parser():
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument("--save-file", type=Path, required=True)
     parser.add_argument(
-        "--countries-subset",
+        "--sources-subset",
         choices=[1, 2, 3],
         type=int,
         default=3,

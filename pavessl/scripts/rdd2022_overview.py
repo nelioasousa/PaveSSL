@@ -13,12 +13,12 @@ def main(data_path: Path, save_dir: Path, num_samples: int):
     sizes_count = defaultdict(lambda: defaultdict(int))
     objects_count = defaultdict(lambda: defaultdict(int))
     samples_count = defaultdict(lambda: defaultdict(int))
-    for country_dir in tqdm(list(data_path.iterdir())):
-        country_name = country_dir.name
-        samples_dir = save_dir / country_name
+    for source_dir in tqdm(list(data_path.iterdir())):
+        source_name = source_dir.name
+        samples_dir = save_dir / source_name
         samples_dir.mkdir(exist_ok=True)
-        annotations_folder = country_dir / "train/annotations/xmls"
-        images_folder = country_dir / "train/images"
+        annotations_folder = source_dir / "train/annotations/xmls"
+        images_folder = source_dir / "train/images"
         for label in annotations_folder.iterdir():
             root = ET.parse(label)
             size_tag = root.find("size")
@@ -30,18 +30,18 @@ def main(data_path: Path, save_dir: Path, num_samples: int):
                     size_tag.findtext("height", "?"),
                 )
             )
-            sizes_count[country_name][size] += 1
+            sizes_count[source_name][size] += 1
             label_obj_count = Counter(
                 obj.findtext("name", "?") for obj in root.iter("object")
             )
             for obj, count in label_obj_count.items():
-                objects_count[country_name][obj] += count
-                if samples_count[country_name][obj] < num_samples:
+                objects_count[source_name][obj] += count
+                if samples_count[source_name][obj] < num_samples:
                     sample_dir = samples_dir / "_".join(obj.split())
                     sample_dir.mkdir(exist_ok=True)
                     image_name = f"{label.stem}.jpg"
                     copy(images_folder / image_name, sample_dir / image_name)
-                    samples_count[country_name][obj] += 1
+                    samples_count[source_name][obj] += 1
     with (save_dir / "overview.json").open("w") as f:
         json_dump([sizes_count, objects_count], f, indent=2, sort_keys=True)
 

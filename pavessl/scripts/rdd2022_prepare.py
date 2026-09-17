@@ -87,17 +87,17 @@ def _save_bboxes_to_annotation(bboxes, ann_save_path):
         label_file.writelines(label_lines)
 
 
-def _get_train_test_samples(country_folder: Path):
+def _get_train_test_samples(source_folder: Path):
     train_samples = [
         (
             img_path,
             img_path.parents[1] / f"annotations/xmls/{img_path.stem}.xml",
         )
-        for img_path in (country_folder / "train/images").iterdir()
+        for img_path in (source_folder / "train/images").iterdir()
     ]
-    if not (country_folder / "test").is_dir():
+    if not (source_folder / "test").is_dir():
         return train_samples, []
-    test_samples = list((country_folder / "test/images").iterdir())
+    test_samples = list((source_folder / "test/images").iterdir())
     return train_samples, test_samples
 
 
@@ -138,7 +138,7 @@ def _get_available_classes(img_ann_pairs: tuple[Path, Path]):
 
 
 def _train_valid_test_split(
-    country_folder: Path,
+    source_folder: Path,
     train_proportion: float,
     valid_proportion: float,
 ):
@@ -148,7 +148,7 @@ def _train_valid_test_split(
         or (train_proportion + valid_proportion > 1.0)
     ):
         raise ValueError("Invalid proportions")
-    train_samples, test_samples = _get_train_test_samples(country_folder)
+    train_samples, test_samples = _get_train_test_samples(source_folder)
     classes = _get_available_classes(train_samples)
     total_samples = len(train_samples) + len(test_samples)
     test_size = ceil(
@@ -186,11 +186,11 @@ def _prepare_dst_folder(dest_folder: Path):
 
 def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
     save_dir.mkdir(exist_ok=True, parents=True)
-    for country_folder in tqdm(list(data_path.iterdir())):
-        dst_folder = save_dir / country_folder.name
+    for source_folder in tqdm(list(data_path.iterdir())):
+        dst_folder = save_dir / source_folder.name
         _prepare_dst_folder(dst_folder)
         classes, train_split, valid_split, test_split = _train_valid_test_split(
-            country_folder,
+            source_folder,
             train_prop,
             valid_prop,
         )
@@ -204,7 +204,7 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
                 if label_path is None
                 else _get_bboxes_from_xml_label(label_path)
             )
-            if country_folder.name == "Norway":
+            if source_folder.name == "Norway":
                 img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
             img.save(dst_folder / f"train/images/{img_path.name}")
             if label_path is None:
@@ -215,7 +215,7 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
             for img_path, label_path in pairs:
                 img = Image.open(img_path)
                 bboxes = _get_bboxes_from_xml_label(label_path)
-                if country_folder.name == "Norway":
+                if source_folder.name == "Norway":
                     img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
                 img.save(dst_folder / f"{split}/images/{img_path.name}")
                 ann_dst = (

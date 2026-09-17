@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torchvision import models
 
 from pavessl import utils
-from pavessl.data import get_rdd2022_countries
+from pavessl.data import get_rdd2022_sources
 from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.knn_eval import knn_eval
 
@@ -42,8 +42,8 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    target_countries = get_rdd2022_countries(args.countries_subset)
-    _, train_loader = _get_train_data(target_countries, args)
+    target_sources = get_rdd2022_sources(args.sources_subset)
+    _, train_loader = _get_train_data(target_sources, args)
     # Prepare loss function
     loss_fn = utils.SSLLoss(
         projection_dim=args.projection_dim,
@@ -94,7 +94,7 @@ def pretrain(args):
         "valid_history": np.zeros(
             (
                 args.epochs,
-                len(target_countries) * len(valid_ks) * len(valid_metrics),
+                len(target_sources) * len(valid_ks) * len(valid_metrics),
             ),
             dtype=np.float32,
         ),
@@ -136,7 +136,7 @@ def pretrain(args):
             distance_temperature=0.07,
             pred_threshold=0.5,
             data_path=args.data,
-            target_countries=target_countries,
+            target_sources=target_sources,
             crop_size=args.global_size,
             num_crops=3,
             crops_overlap=0.3,
@@ -144,10 +144,10 @@ def pretrain(args):
             num_workers=args.num_workers,
             simplified=True,
         )
-        for i, country in enumerate(target_countries):
-            country_rsts = eval_results[country]
+        for i, source in enumerate(target_sources):
+            source_rsts = eval_results[source]
             valid_history[epoch, i*9:(i+1)*9] = [
-                country_rsts[metric][i]
+                source_rsts[metric][i]
                 for i in range(len(valid_ks)) for metric in valid_metrics
             ]
         # Save checkpoints
@@ -183,8 +183,8 @@ def pretrain(args):
         delimiter=",",
         fmt="%.4f",
         header=",".join(
-            f"{country}_{k}_{metric}"
-            for country in target_countries
+            f"{source}_{k}_{metric}"
+            for source in target_sources
             for k in valid_ks
             for metric in valid_metrics
         ),
@@ -316,7 +316,7 @@ def get_args_parser():
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument(
-        "--countries-subset",
+        "--sources-subset",
         choices=[1, 2, 3],
         type=int,
         default=1,
@@ -330,7 +330,7 @@ def get_args_parser():
     return parser
 
 
-def _get_train_data(target_countries, args):
+def _get_train_data(target_sources, args):
     multiview_trans = SSLMultiviewTransform(
         global_size=args.global_size,
         global_scale=args.global_scale,
@@ -341,7 +341,7 @@ def _get_train_data(target_countries, args):
     train_dataset = RDD2022(
         data_path=args.data,
         task="ssl",
-        countries=target_countries,
+        sources=target_sources,
         split="train",
         transform=multiview_trans,
     )
