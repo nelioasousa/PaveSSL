@@ -108,7 +108,7 @@ def _get_features_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"[{target_country}/train]",
+        header=f"(Valid) [{target_country}/train]",
     )
     dataset = RDD2022(
         data_path=data_path,
@@ -123,7 +123,7 @@ def _get_features_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"[{target_country}/valid]",
+        header=f"(Valid) [{target_country}/valid]",
     )
     return train_features, train_labels, valid_features, valid_labels
 

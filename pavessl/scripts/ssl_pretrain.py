@@ -10,7 +10,9 @@ from torch.utils.data import DataLoader
 from torchvision import models
 
 from pavessl import utils
+from pavessl.data import get_rdd2022_countries
 from pavessl.data import RDD2022, SSLMultiviewTransform
+from pavessl.scripts.knn_eval import knn_eval
 
 
 def pretrain(args):
@@ -40,7 +42,8 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    _, train_loader = _get_train_data(args)
+    target_countries = get_rdd2022_countries(args.countries_subset)
+    _, train_loader = _get_train_data(target_countries, args)
     # Prepare loss function
     loss_fn = utils.SSLLoss(
         projection_dim=args.projection_dim,
@@ -83,9 +86,18 @@ def pretrain(args):
         niter_per_ep=len(train_loader),
     )
     # Resume training
+    valid_ks = [10, 25, 50]
+    valid_metrics = ["accuracy", "sensitivity", "specificity"]
     to_restore = {
         "epoch": 0,
         "loss_history": np.zeros((args.epochs, 3), dtype=np.float32),
+        "valid_history": np.zeros(
+            (
+                args.epochs,
+                len(target_countries) * len(valid_ks) * len(valid_metrics),
+            ),
+            dtype=np.float32,
+        ),
     }
     utils.restart_from_checkpoint(
         save_dir / "checkpoint.pth",
@@ -96,6 +108,7 @@ def pretrain(args):
         loss=loss_fn,
     )
     loss_history = to_restore["loss_history"]
+    valid_history = to_restore["valid_history"]
     # Training
     start_time = time.monotonic()
     for epoch in range(to_restore["epoch"], args.epochs):
@@ -115,6 +128,28 @@ def pretrain(args):
         loss_history[epoch, 0] = loss_log.min_value
         loss_history[epoch, 1] = loss_log.max_value
         loss_history[epoch, 2] = loss_log.global_avg
+        # Run validation
+        teacher.eval()
+        eval_results = knn_eval(
+            model=teacher.backbone,
+            k=valid_ks,
+            distance_temperature=0.07,
+            pred_threshold=0.5,
+            data_path=args.data,
+            target_countries=target_countries,
+            crop_size=args.global_size,
+            num_crops=3,
+            crops_overlap=0.3,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            simplified=True,
+        )
+        for i, country in enumerate(target_countries):
+            country_rsts = eval_results[country]
+            valid_history[epoch, i*9:(i+1)*9] = [
+                country_rsts[metric][i]
+                for i in range(len(valid_ks)) for metric in valid_metrics
+            ]
         # Save checkpoints
         states_dict = {
             "student": student.state_dict(),
@@ -134,15 +169,25 @@ def pretrain(args):
                 save_file=save_dir / f"checkpoint_{epoch:04d}.pth",
                 states_dict=states_dict,
             )
-        # # Run eval
-        # student.eval()
-    # Save loss history and report duration
+    # Save histories and report run duration
     np.savetxt(
         fname=save_dir / "loss_history.csv",
         X=loss_history,
         delimiter=",",
-        fmt="%24.10e",
+        fmt="%20.10e",
         header="min,max,avg",
+    )
+    np.savetxt(
+        fname=save_dir / "valid_history.csv",
+        X=valid_history,
+        delimiter=",",
+        fmt="%.4f",
+        header=",".join(
+            f"{country}_{k}_{metric}"
+            for country in target_countries
+            for k in valid_ks
+            for metric in valid_metrics
+        ),
     )
     train_duration = int(time.monotonic() - start_time)
     print(f"Training ended in {utils.get_time_string(train_duration)}!")
@@ -170,8 +215,8 @@ def _train_one_epoch(
     )
     metric_logger.add_meter("lr", utils.SmoothedValue(fmt="{value:.2e}"))
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
-    epoch_str = str(epoch).rjust(len(str(args.epochs)), "0")
-    header = f"Epoch: [{epoch_str}/{args.epochs}]"
+    epoch_str = str(epoch + 1).rjust(len(str(args.epochs)), "0")
+    header = f"(Train) Epoch: [{epoch_str}/{args.epochs}]"
     for it, (global_views, local_views) in enumerate(
         metric_logger.log_every(data_loader, 10, header)
     ):
@@ -271,6 +316,12 @@ def get_args_parser():
     # Others
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument(
+        "--countries-subset",
+        choices=[1, 2, 3],
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
         "--save-dir", type=Path, default=Path("data/results/ssl_pretrain"),
     )
     parser.add_argument("--save-folder", type=str, required=True)
@@ -279,7 +330,7 @@ def get_args_parser():
     return parser
 
 
-def _get_train_data(args):
+def _get_train_data(target_countries, args):
     multiview_trans = SSLMultiviewTransform(
         global_size=args.global_size,
         global_scale=args.global_scale,
@@ -290,7 +341,7 @@ def _get_train_data(args):
     train_dataset = RDD2022(
         data_path=args.data,
         task="ssl",
-        countries="all",
+        countries=target_countries,
         split="train",
         transform=multiview_trans,
     )
