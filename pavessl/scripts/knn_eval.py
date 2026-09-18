@@ -26,7 +26,6 @@ def load_resnet50_backbone(state_file: Path, checkpoint_key: str | None = None):
     return backbone
 
 
-@torch.no_grad()
 def _compute_features(
     model: torch.nn.Module,
     dataset: torch.utils.data.Dataset,
@@ -41,7 +40,7 @@ def _compute_features(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
+        pin_memory=True,
         drop_last=False,
     )
     features = None
@@ -56,31 +55,33 @@ def _compute_features(
     ):
         if isinstance(images, list):
             images = [imgs.to(device, non_blocking=True) for imgs in images]
-            feats = torch.stack([model(imgs) / len(images) for imgs in images])
-            feats = feats.sum(dim=0, keepdim=False)
+            feats = model(images[0])
+            for imgs in images[1:]:
+                feats.add_(model(imgs))
+            feats.div_(len(images))
         else:
-            images.to(device, non_blocking=True)
+            images = images.to(device, non_blocking=True)
             feats = model(images)
+        feats.div_(torch.linalg.vector_norm(feats, dim=-1, keepdims=True))
         if features is None:
             features = torch.empty(
-                (len(dataset), feats.shape[-1]),
+                size=(len(dataset), feats.shape[-1]),
                 dtype=feats.dtype,
                 device=device,
             )
             labels = torch.empty(
-                (len(dataset), targets.shape[-1]),
+                size=(len(dataset), targets.shape[-1]),
                 dtype=targets.dtype,
                 device=device,
             )
-        feats.div_(torch.linalg.vector_norm(feats, dim=-1, keepdims=True))
         start = i * batch_size
         end = start + len(targets)
         features[start:end].copy_(feats)
         labels[start:end].copy_(targets)
-    return features.detach(), labels.detach()
+    return features, labels
 
 
-def _get_features_and_labels(
+def _get_feature_similarities_and_labels(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
@@ -125,10 +126,11 @@ def _get_features_and_labels(
         num_workers=num_workers,
         header=f"(Valid) [{target_source}/valid]",
     )
-    return train_features, train_labels, valid_features, valid_labels
+    similarities = torch.mm(valid_features, train_features.t())
+    return similarities, train_labels, valid_labels
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def knn_eval_one(
     model: torch.nn.Module,
     k: list[int],
@@ -143,7 +145,7 @@ def knn_eval_one(
     threshold: float = 0.3,
 ):
     max_k = max(k)
-    feats_and_labels = _get_features_and_labels(
+    similarities_and_labels = _get_feature_similarities_and_labels(
         model=model,
         data_path=data_path,
         target_source=target_source,
@@ -153,10 +155,7 @@ def knn_eval_one(
         batch_size=batch_size,
         num_workers=num_workers,
     )
-    train_feats, train_labels, valid_feats, valid_labels = feats_and_labels
-    train_feats = train_feats.t()
-    similarities = torch.mm(valid_feats, train_feats)
-    del train_feats, valid_feats
+    similarities, train_labels, valid_labels = similarities_and_labels
     similarities, idxs = similarities.topk(
         k=max_k, dim=-1, largest=True, sorted=True,
     )
@@ -227,11 +226,12 @@ def knn_eval(
 
 def _main(args):
     backbone = load_resnet50_backbone(args.backbone, args.checkpoint_key)
-    if args.use_cuda and torch.cuda.is_available():
-        device = torch.device(torch.cuda.current_device())
-    else:
-        device = torch.device("cpu")
-    backbone.to(device=device)
+    device = torch.device(
+        torch.cuda.current_device()
+        if args.use_cuda and torch.cuda.is_available()
+        else "cpu"
+    )
+    backbone = backbone.to(device=device)
     target_sources = get_rdd2022_sources(args.sources_subset)
     results = knn_eval(
         model=backbone,

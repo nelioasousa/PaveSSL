@@ -30,15 +30,14 @@ def pretrain(args):
         args.projection_dim,
         head_norm_last_layer=True,
     )
-    if torch.cuda.is_available():
-        device = torch.device(torch.cuda.current_device())
-    else:
-        device = torch.device("cpu")
-    student = student.to(device=device)
-    teacher = teacher.to(device=device)
-    # teacher and student start with the same weights
+    device = torch.device(
+        torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+    )
+    student = student.to(device=device, non_blocking=True)
+    teacher = teacher.to(device=device, non_blocking=True)
+    # Teacher and Student start with the same weights
     teacher.load_state_dict(student.state_dict())
-    # there is no backpropagation through the teacher
+    # There is no backpropagation through the teacher
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
@@ -55,7 +54,7 @@ def pretrain(args):
         student_temp=args.student_temp,
         center_momentum=args.center_momentum,
     )
-    loss_fn.to(device=device)
+    loss_fn = loss_fn.to(device=device, non_blocking=True)
     # Optim
     params_groups = utils.get_params_groups(student)
     if args.optim == "adamw":
@@ -85,9 +84,12 @@ def pretrain(args):
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
     )
+    # k-NN validation
+    valid_ks = [10, 25, 50, 100]
+    ## Metrics to store: only "accuracy", "sensitivity", and "specificity" are available
+    valid_metrics = ("accuracy", "sensitivity", "specificity")
+    index_step = len(valid_ks) * len(valid_metrics)
     # Resume training
-    valid_ks = [10, 25, 50]
-    valid_metrics = ["accuracy", "sensitivity", "specificity"]
     to_restore = {
         "epoch": 0,
         "loss_history": np.zeros((args.epochs, 3), dtype=np.float32),
@@ -146,7 +148,7 @@ def pretrain(args):
         )
         for i, source in enumerate(target_sources):
             source_rsts = eval_results[source]
-            valid_history[epoch, i*9:(i+1)*9] = [
+            valid_history[epoch, i*index_step:(i+1)*index_step] = [
                 source_rsts[metric][i]
                 for i in range(len(valid_ks)) for metric in valid_metrics
             ]
@@ -155,10 +157,11 @@ def pretrain(args):
             "student": student.state_dict(),
             "teacher": teacher.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "loss": loss_fn.state_dict(),
             "epoch": epoch + 1,
             "loss_history": loss_history,
+            "valid_history": valid_history,
             "args": args,
-            "loss": loss_fn.state_dict(),
         }
         utils.save_states(
             save_file=save_dir / "checkpoint.pth",
@@ -220,14 +223,13 @@ def _train_one_epoch(
     for it, (global_views, local_views) in enumerate(
         metric_logger.log_every(data_loader, 10, header)
     ):
+        global_views = global_views.to(device=device, non_blocking=True)
+        local_views = local_views.to(device=device, non_blocking=True)
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr_schedule[it]
-        # Move images to device
-        global_views = global_views.to(device=device, non_blocking=True)
-        local_views = local_views.to(device=device, non_blocking=True)
         # Teacher and student forward passes && compute loss
         teacher_out = teacher(global_views)
         student_global_out = student(global_views)
@@ -239,8 +241,9 @@ def _train_one_epoch(
             epoch,
         )
         # Loss explosion, unstable training
-        if not math.isfinite(loss.item()):
-            raise SystemExit(f"Loss exploded with value {loss.item()}")
+        loss_value = loss.item()  # CPU-GPU synchronization
+        if not math.isfinite(loss_value):
+            raise SystemExit(f"Loss exploded with value {loss_value}")
         # Student update
         optimizer.zero_grad()
         loss.backward()
@@ -251,15 +254,16 @@ def _train_one_epoch(
         # EMA teacher update
         with torch.no_grad():
             m = momentum_schedule[it]
-            param_pairs = zip(student.parameters(), teacher.parameters())
-            for param_stdt, param_tchr in param_pairs:
+            for param_stdt, param_tchr in zip(
+                student.parameters(), teacher.parameters(),
+            ):
                 param_tchr.data.mul_(m).add_((1 - m) * param_stdt.detach().data)
         # Logging
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        metric_logger.update(loss=loss.item())
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+        metric_logger.update(
+            loss=loss_value,
+            lr=lr_schedule[it].item(),
+            wd=wd_schedule[it].item(),
+        )
     # print("Averaged stats:", metric_logger)
     return metric_logger.meters["loss"]
 
@@ -340,9 +344,9 @@ def _get_train_data(target_sources, args):
     )
     train_dataset = RDD2022(
         data_path=args.data,
-        task="ssl",
         sources=target_sources,
         split="train",
+        task="ssl",
         transform=multiview_trans,
     )
     train_loader = DataLoader(
@@ -351,8 +355,9 @@ def _get_train_data(target_sources, args):
         shuffle=True,
         num_workers=args.num_workers,
         collate_fn=SSLMultiviewTransform.multiview_collate_fn,
-        pin_memory=False,
+        pin_memory=True,
         drop_last=True,
+        persistent_workers=True,
     )
     return train_dataset, train_loader
 

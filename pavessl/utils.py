@@ -28,6 +28,7 @@ def load_bboxes(annotation_path: Path):
     return bboxes
 
 
+@torch.inference_mode()
 def _forward_pass(
     model: torch.nn.Module,
     image_size: tuple[int, int] = (96, 96),
@@ -38,8 +39,7 @@ def _forward_pass(
         *image_size,
         device=next(model.parameters()).device,
     )
-    with torch.no_grad():
-        return model(x)
+    return model(x)
 
 
 def get_out_shape(
@@ -384,10 +384,6 @@ class MetricLogger:
 
     def update(self, **kwargs):
         for k, v in kwargs.items():
-            try:
-                v = v.item()
-            except AttributeError:
-                pass
             self.meters[k].update(v)
 
     def add_meter(self, name: str, meter: SmoothedValue):
