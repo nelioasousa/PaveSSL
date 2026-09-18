@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader
 from torchvision import models
 
 from pavessl import utils
-from pavessl.data import get_rdd2022_sources
-from pavessl.data import RDD2022, SSLMultiviewTransform
+from pavessl.data import RDD2022, SSLMultiviewTransform, get_rdd2022_sources
 from pavessl.scripts.knn_eval import knn_eval
 
 
@@ -86,7 +85,8 @@ def pretrain(args):
     )
     # k-NN validation
     valid_ks = [10, 25, 50, 100]
-    ## Metrics to store: only "accuracy", "sensitivity", and "specificity" are available
+    ## Metrics to store:
+    ##   Only "accuracy", "sensitivity", and "specificity" are available
     valid_metrics = ("accuracy", "sensitivity", "specificity")
     index_step = len(valid_ks) * len(valid_metrics)
     # Resume training
@@ -148,9 +148,10 @@ def pretrain(args):
         )
         for i, source in enumerate(target_sources):
             source_rsts = eval_results[source]
-            valid_history[epoch, i*index_step:(i+1)*index_step] = [
+            valid_history[epoch, i * index_step : (i + 1) * index_step] = [
                 source_rsts[metric][i]
-                for i in range(len(valid_ks)) for metric in valid_metrics
+                for i in range(len(valid_ks))
+                for metric in valid_metrics
             ]
         # Save checkpoints
         states_dict = {
@@ -255,7 +256,8 @@ def _train_one_epoch(
         with torch.no_grad():
             m = momentum_schedule[it]
             for param_stdt, param_tchr in zip(
-                student.parameters(), teacher.parameters(),
+                student.parameters(),
+                teacher.parameters(),
             ):
                 param_tchr.data.mul_(m).add_((1 - m) * param_stdt.detach().data)
         # Logging
@@ -326,7 +328,9 @@ def get_args_parser():
         default=1,
     )
     parser.add_argument(
-        "--save-dir", type=Path, default=Path("data/results/ssl_pretrain"),
+        "--save-dir",
+        type=Path,
+        default=Path("data/results/ssl_pretrain"),
     )
     parser.add_argument("--save-folder", type=str, required=True)
     parser.add_argument("--checkpoint-freq", type=int, default=10)

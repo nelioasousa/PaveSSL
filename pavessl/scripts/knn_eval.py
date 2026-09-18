@@ -2,13 +2,12 @@ import argparse
 import pickle
 from pathlib import Path
 
+import numpy as np
 import torch
 import torchvision
-import numpy as np
 from torch.utils.data import DataLoader
 
-from pavessl.data import get_rdd2022_sources
-from pavessl.data import MultiBottomSplit, RDD2022
+from pavessl.data import RDD2022, MultiBottomSplit, get_rdd2022_sources
 from pavessl.utils import MetricLogger
 
 
@@ -157,7 +156,10 @@ def knn_eval_one(
     )
     similarities, train_labels, valid_labels = similarities_and_labels
     similarities, idxs = similarities.topk(
-        k=max_k, dim=-1, largest=True, sorted=True,
+        k=max_k,
+        dim=-1,
+        largest=True,
+        sorted=True,
     )
     closest_labels = train_labels.new_empty((*valid_labels.shape, max_k))
     for i in range(max_k):
@@ -166,11 +168,11 @@ def knn_eval_one(
     closest_labels.mul_(similarities)
     counts = valid_labels.sum(dim=0, keepdim=True)
     accuracy = np.empty((len(k), valid_labels.shape[-1]), dtype=np.float32)
-    results = dict(
-        accuracy=accuracy,
-        sensitivity=np.empty_like(accuracy),
-        specificity=np.empty_like(accuracy),
-    )
+    results = {
+        "accuracy": accuracy,
+        "sensitivity": np.empty_like(accuracy),
+        "specificity": np.empty_like(accuracy),
+    }
     for i, k_value in enumerate(k):
         probs = closest_labels[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
@@ -180,8 +182,8 @@ def knn_eval_one(
         results["accuracy"][i] = ((tps + tns) / len(valid_labels)).cpu().numpy()
         results["sensitivity"][i] = (tps / counts).cpu().numpy()
         results["specificity"][i] = (
-            tns / (len(valid_labels) - counts)
-        ).cpu().numpy()
+            (tns / (len(valid_labels) - counts)).cpu().numpy()
+        )
     return results
 
 
@@ -248,7 +250,6 @@ def _main(args):
     )
     with open(args.save_file, mode="wb") as f:
         pickle.dump(obj=results, file=f, protocol=5)
-    return
 
 
 def get_args_parser():
@@ -269,7 +270,7 @@ def get_args_parser():
     parser.add_argument("-t", "--temperature", type=float, default=0.07)
     parser.add_argument("--crop-size", type=int, default=224)
     parser.add_argument("--num-crops", type=int, default=3)
-    parser.add_argument("--crops-overlap", type=float, default=1/3)
+    parser.add_argument("--crops-overlap", type=float, default=(1 / 3))
     parser.add_argument("--threshold", type=float, default=0.5)
     # Data and save locations
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))

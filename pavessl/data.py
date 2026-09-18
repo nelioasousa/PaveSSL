@@ -24,7 +24,7 @@ def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
         "Czech",
         "United_States",
     ]
-    return sources[:(2*subset_level)]
+    return sources[: (2 * subset_level)]
 
 
 class RDD2022(Dataset):
@@ -62,10 +62,14 @@ class RDD2022(Dataset):
             self.local_classes = {}
             for source in sources:
                 cls_file = data_path / source / "classes.txt"
-                cls_idxs, cls_names = list(zip(*(
-                    line.split(maxsplit=1)
-                    for line in cls_file.read_text().splitlines()
-                )))
+                cls_idxs, cls_names = list(
+                    zip(
+                        *(
+                            line.split(maxsplit=1)
+                            for line in cls_file.read_text().splitlines()
+                        )
+                    )
+                )
                 self.local_classes[source] = cls_names
                 self.local_index_map[source] = {
                     int(idx): i for i, idx in enumerate(cls_idxs)
@@ -113,7 +117,9 @@ class RDD2022(Dataset):
         else:
             multihot = torch.zeros(len(self.classes))
         return multihot.index_fill_(
-            dim=0, index=torch.tensor(labels, dtype=torch.long), value=1.0,
+            dim=0,
+            index=torch.tensor(labels, dtype=torch.long),
+            value=1.0,
         )
 
     def _load_label_for_detection(self, label_path, dim, source):
@@ -147,7 +153,9 @@ class RDD2022(Dataset):
             label = self._load_label_for_classification(label_path, source)
         else:
             label = self._load_label_for_detection(
-                label_path, image.shape[-2:], source,
+                label_path,
+                image.shape[-2:],
+                source,
             )
         if self.transform is None:
             return image, label
@@ -315,7 +323,7 @@ class MultiBottomSplit(transforms_v2.Transform):
         self._size = size
         self._num_crops = num_crops
         self._overlap = overlap
-        self._local_cache = dict()
+        self._local_cache = {}
 
     def make_params(self, flat_inputs):
         h, w = query_size(flat_inputs)
@@ -326,7 +334,12 @@ class MultiBottomSplit(transforms_v2.Transform):
             self._local_cache[w] = crop_size
         top = h - crop_size
         crops = [
-            dict(top=top, left=int(left), height=crop_size, width=crop_size)
+            {
+                "top": top,
+                "left": int(left),
+                "height": crop_size,
+                "width": crop_size,
+            }
             for left in np.linspace(0, w - crop_size, self._num_crops)
         ]
         return {"crops": crops}
