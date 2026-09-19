@@ -5,10 +5,11 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torchvision.models
 from torch import nn
 from torch.utils.data import DataLoader
-from torchvision import models
 
+from pavessl import models
 from pavessl import utils
 from pavessl.data import RDD2022, SSLMultiviewTransform, get_rdd2022_sources
 from pavessl.scripts.knn_eval import knn_eval
@@ -31,13 +32,13 @@ def pretrain(args):
     if args.dino_base:
         backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
     else:
-        backbone = models.resnet50()
+        backbone = torchvision.models.resnet50()
         backbone.fc = nn.Identity()
-    student = utils.DualHeadProjectionNetwork(
+    student = models.DualHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
     )
-    teacher = utils.SingleHeadProjectionNetwork(
+    teacher = models.SingleHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
@@ -56,7 +57,7 @@ def pretrain(args):
     target_sources = get_rdd2022_sources(args.sources_subset)
     _, train_loader = _get_train_data(target_sources, args)
     # Prepare loss function
-    loss_fn = utils.SSLLoss(
+    loss_fn = models.SSLLoss(
         projection_dim=args.projection_dim,
         num_local_views=args.num_local_views,
         teacher_temp=args.teacher_temp,
