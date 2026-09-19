@@ -26,7 +26,7 @@ CLASS_NAMES_MAP = {
     "D44": "blur_white_line",
 }
 
-CLASSES = sorted(CLASS_NAMES_MAP.values())
+CLASSES = sorted(set(CLASS_NAMES_MAP.values()))
 
 CLASS_INDEXES = {class_name: i for i, class_name in enumerate(CLASSES)}
 
