@@ -19,8 +19,10 @@ def pretrain(args):
     utils.set_random_seeds(42)
     save_dir = args.save_dir / args.save_folder
     save_dir.mkdir(exist_ok=True, parents=True)
+    target_sources = get_rdd2022_sources(args.sources_subset)
     # Check some arguments
     args.epochs = max(1, args.epochs)
+    args.batch_size = max(args.batch_size, len(target_sources))
     args.lr_warmup_size = min(args.lr_warmup_size, args.epochs)
     args.teacher_temp_warmup = min(args.teacher_temp_warmup, args.epochs)
     args.freeze_last_layer = min(args.freeze_last_layer, args.epochs)
@@ -54,7 +56,6 @@ def pretrain(args):
     for p in teacher.parameters():
         p.requires_grad = False
     # Data
-    target_sources = get_rdd2022_sources(args.sources_subset)
     _, train_loader = _get_train_data(target_sources, args)
     # Prepare loss function
     loss_fn = models.SSLLoss(
@@ -372,12 +373,10 @@ def _get_train_data(target_sources, args):
     )
     train_loader = DataLoader(
         dataset=train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
+        batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
         num_workers=args.num_workers,
         collate_fn=SSLMultiviewTransform.multiview_collate_fn,
         pin_memory=False,
-        drop_last=True,
         persistent_workers=True,
     )
     return train_dataset, train_loader

@@ -7,7 +7,7 @@ import torch
 import torchvision.transforms.v2 as transforms_v2
 import torchvision.transforms.v2.functional as F
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import Transform, query_size
 
@@ -128,7 +128,7 @@ class RDD2022(Dataset):
                 return self.sources[i], index - self.acc_counts[i]
         raise IndexError("Out of range")
 
-    def _load_label_for_classification(self, label_path, source):
+    def _load_classific_label(self, label_path, source):
         labels = [
             self.global_local_index_map[idx]
             for idx in load_bboxes(label_path)["labels"]
@@ -142,7 +142,7 @@ class RDD2022(Dataset):
             "source_mask": self.sources_mask[source].clone(),
         }
 
-    def _load_label_for_detection(self, label_path, dim, source):
+    def _load_detection_label(self, label_path, dim, source):
         bboxes = load_bboxes(label_path)
         bboxes["labels"] = [
             self.global_local_index_map[idx] for idx in bboxes["labels"]
@@ -158,8 +158,12 @@ class RDD2022(Dataset):
             "source_classes": self.local_indexes[source].clone(),
         }
 
-    def __getitem__(self, index):
-        source, source_index = self._compute_location_from_index(index)
+    def __getitem__(self, item_ref: int | tuple[str, int]):
+        source, source_index = (
+            self._compute_location_from_index(item_ref)
+            if isinstance(item_ref, int)
+            else item_ref
+        )
         image_name = self.images[source][source_index]
         source_dir = self.sources_base_dir[source]
         image = Image.open(f"{source_dir}/images/{image_name}").convert("RGB")
@@ -170,9 +174,9 @@ class RDD2022(Dataset):
             return self.transform(image)
         label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
         if self.task == "classification":
-            label = self._load_label_for_classification(label_path, source)
+            label = self._load_classific_label(label_path, source)
         else:
-            label = self._load_label_for_detection(
+            label = self._load_detection_label(
                 label_path,
                 image.shape[-2:],
                 source,
@@ -180,6 +184,64 @@ class RDD2022(Dataset):
         if self.transform is None:
             return image, label
         return self.transform(image, label)
+
+    def get_balanced_sampler(self, batch_size: int):
+        return BalancedSampler(self, batch_size)
+
+
+class BalancedSampler(Sampler[list[tuple[str, int]]]):
+    def __init__(self, rdd_dataset: RDD2022, batch_size: int):
+        self.batch_size = batch_size
+        self._sources_count = {
+            source: count
+            for source, count in zip(rdd_dataset.sources, rdd_dataset.counts)
+        }
+        self._sources_participation = {
+            source: max(1, round(batch_size * count / len(rdd_dataset)))
+            for source, count in self._sources_count.items()
+        }
+        # Match participations to batch size exactly
+        diff = self.batch_size - sum(self._sources_participation.values())
+        inc = -1 if diff < 0 else 1
+        inc_order = sorted(
+            self._sources_participation,
+            key=(lambda x: self._sources_participation[x]),
+            reverse=(diff < 0),
+        )
+        for i in range(abs(diff)):
+            self._sources_participation[inc_order[i]] += inc
+        # For iteration
+        self._total_batches = min(
+            count // self._sources_participation[source]
+            for source, count in self._sources_count.items()
+        )
+        self._batch = None
+        self._indexes = {
+            source: np.arange(count, dtype=np.int32)
+            for source, count in self._sources_count.items()
+        }
+
+    def __len__(self):
+        return self._total_batches
+
+    def __iter__(self):
+        self._batch = 0
+        for source in self._sources_count:
+            np.random.shuffle(self._indexes[source])
+        return self
+
+    def __next__(self):
+        if self._batch == self._total_batches:
+            raise StopIteration("No more full batches")
+        indices = []
+        i = self._batch
+        for source, size in self._sources_participation.items():
+            indices.extend(
+                (source, indx.item())
+                for indx in self._indexes[source][i * size : (i+1) * size]
+            )
+        self._batch += 1
+        return indices
 
 
 class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
