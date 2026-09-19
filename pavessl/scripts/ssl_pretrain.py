@@ -18,6 +18,16 @@ def pretrain(args):
     utils.set_random_seeds(42)
     save_dir = args.save_dir / args.save_folder
     save_dir.mkdir(exist_ok=True, parents=True)
+    # Check some arguments
+    args.epochs = max(1, args.epochs)
+    args.lr_warmup_size = min(args.lr_warmup_size, args.epochs)
+    args.teacher_temp_warmup = min(args.teacher_temp_warmup, args.epochs)
+    args.freeze_last_layer = min(args.freeze_last_layer, args.epochs)
+    args.num_local_views = max(args.num_local_views, 1)
+    args.checkpoint_freq = (
+        args.checkpoint_freq if args.checkpoint_freq > 0 else args.epochs
+    )
+    # Load backbone and build networks
     if args.dino_base:
         backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
     else:
