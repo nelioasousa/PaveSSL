@@ -33,10 +33,13 @@ def pretrain(args):
     else:
         backbone = models.resnet50()
         backbone.fc = nn.Identity()
-    student = utils.ProjectionNetwork(backbone, args.projection_dim)
-    teacher = utils.ProjectionNetwork(
-        backbone,
-        args.projection_dim,
+    student = utils.DualHeadProjectionNetwork(
+        backbone=backbone,
+        projection_dim=args.projection_dim,
+    )
+    teacher = utils.SingleHeadProjectionNetwork(
+        backbone=backbone,
+        projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
     device = torch.device(
@@ -45,7 +48,7 @@ def pretrain(args):
     student = student.to(device=device, non_blocking=True)
     teacher = teacher.to(device=device, non_blocking=True)
     # Teacher and Student start with the same weights
-    teacher.load_state_dict(student.state_dict())
+    teacher.load_state_dict(student.state_dict(), strict=False)
     # There is no backpropagation through the teacher
     for p in teacher.parameters():
         p.requires_grad = False
@@ -243,12 +246,11 @@ def _train_one_epoch(
             param_group["lr"] = lr_schedule[it]
         # Teacher and student forward passes && compute loss
         teacher_out = teacher(global_views)
-        student_global_out = student(global_views)
-        student_local_out = student(local_views)
+        student_g_out, student_l_out = student(global_views, local_views)
         loss = loss_fn(
             teacher_out,
-            student_global_out,
-            student_local_out,
+            student_g_out,
+            student_l_out,
             epoch,
         )
         # Loss explosion, unstable training
@@ -260,16 +262,20 @@ def _train_one_epoch(
         loss.backward()
         if epoch < args.freeze_last_layer:
             # Freeze last layer of the projection head in this iteration
-            student.head.last_layer.zero_grad(set_to_none=True)
+            student.global_head.last_layer.zero_grad(set_to_none=True)
+            student.local_head.last_layer.zero_grad(set_to_none=True)
         optimizer.step()
         # EMA teacher update
         with torch.no_grad():
             m = momentum_schedule[it]
-            for param_stdt, param_tchr in zip(
-                student.parameters(),
-                teacher.parameters(),
-            ):
-                param_tchr.data.mul_(m).add_((1 - m) * param_stdt.detach().data)
+            for param_name, stdt_param in student.named_parameters():
+                try:
+                    tchr_param = teacher.get_parameter(param_name)
+                    tchr_param.data.mul_(m).add_(
+                        (1 - m) * stdt_param.detach().data
+                    )
+                except AttributeError:
+                    continue
         # Logging
         metric_logger.update(
             loss=loss_value,

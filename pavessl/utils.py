@@ -98,7 +98,7 @@ class ProjectionHead(torch.nn.Module):
             nn.Linear(bottleneck_dim, out_dim, bias=False)
         )
         mag_weights = self.last_layer.parametrizations.weight.original0
-        mag_weights.data.fill_(1)
+        nn.init.constant_(mag_weights, 1.0)
         if norm_last_layer:
             mag_weights.requires_grad = False
 
@@ -109,7 +109,7 @@ class ProjectionHead(torch.nn.Module):
         return x
 
 
-class ProjectionNetwork(torch.nn.Module):
+class SingleHeadProjectionNetwork(torch.nn.Module):
     def __init__(
         self,
         backbone: torch.nn.Module,
@@ -127,8 +127,9 @@ class ProjectionNetwork(torch.nn.Module):
                 f"(batch, N), got {backbone_out_shp}"
             )
         self.backbone = backbone
-        self.head = ProjectionHead(
-            in_dim=backbone_out_shp[-1],
+        self.backbone_out_dim = backbone_out_shp[-1]
+        self.global_head = ProjectionHead(
+            in_dim=self.backbone_out_dim,
             out_dim=projection_dim,
             num_layers=head_num_layers,
             hidden_dim=head_hidden_dim,
@@ -138,8 +139,43 @@ class ProjectionNetwork(torch.nn.Module):
 
     def forward(self, x):
         x = self.backbone(x)
-        x = self.head(x)
+        x = self.global_head(x)
         return x
+
+
+class DualHeadProjectionNetwork(SingleHeadProjectionNetwork):
+    def __init__(
+        self,
+        backbone: torch.nn.Module,
+        projection_dim: int,
+        heads_num_layers: tuple[int, int] = (3, 4),
+        heads_hidden_dim: tuple[int, int] = (2048, 2048),
+        heads_bottleneck_dim: tuple[int, int] = (256, 512),
+        heads_norm_last_layer: tuple[bool, bool] = (False, False),
+    ):
+        super().__init__(
+            backbone=backbone,
+            projection_dim=projection_dim,
+            head_num_layers=heads_num_layers[0],
+            head_hidden_dim=heads_hidden_dim[0],
+            head_bottleneck_dim=heads_bottleneck_dim[0],
+            head_norm_last_layer=heads_norm_last_layer[0],
+        )
+        self.local_head = ProjectionHead(
+            in_dim=self.backbone_out_dim,
+            out_dim=projection_dim,
+            num_layers=heads_num_layers[1],
+            hidden_dim=heads_hidden_dim[1],
+            bottleneck_dim=heads_bottleneck_dim[1],
+            norm_last_layer=heads_norm_last_layer[1],
+        )
+
+    def forward(self, x_global, x_local):
+        x_global = self.backbone(x_global)
+        x_global = self.global_head(x_global)
+        x_local = self.backbone(x_local)
+        x_local = self.local_head(x_local)
+        return x_global, x_local
 
 
 class SSLLoss(torch.nn.Module):
