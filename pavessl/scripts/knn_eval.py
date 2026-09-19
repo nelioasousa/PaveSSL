@@ -101,7 +101,6 @@ def _get_feature_similarities_and_labels(
         split="train",
         task="classification",
         transform=transform,
-        independent_labels=True,
     )
     train_features, train_labels = _compute_features(
         model=model,
@@ -116,7 +115,6 @@ def _get_feature_similarities_and_labels(
         split="valid",
         task="classification",
         transform=transform,
-        independent_labels=True,
     )
     valid_features, valid_labels = _compute_features(
         model=model,

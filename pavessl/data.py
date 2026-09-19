@@ -35,7 +35,6 @@ class RDD2022(Dataset):
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
         transform: Transform | None = None,
-        independent_labels: bool = False,
     ):
         data_path = data_path.resolve()
         if not data_path.is_dir():
@@ -48,32 +47,50 @@ class RDD2022(Dataset):
                 sources = [sources]
             unknown = frozenset(sources).difference(all_sources)
             if unknown:
-                raise ValueError(f"Unknown source folders: {list(unknown)}")
+                raise ValueError(f"Unknown sources: {list(unknown)}")
         sources.sort()
         self.base = data_path
         self.split = split
         self.sources = sources
         self.task = task
         self.transform = transform
-        self.classes = (data_path / "classes.txt").read_text().splitlines()
-        self.independent_labels = independent_labels
-        if independent_labels:
-            self.local_index_map = {}
-            self.local_classes = {}
-            for source in sources:
-                cls_file = data_path / source / "classes.txt"
-                cls_idxs, cls_names = list(
-                    zip(
-                        *(
-                            line.split(maxsplit=1)
-                            for line in cls_file.read_text().splitlines()
-                        )
-                    )
-                )
-                self.local_classes[source] = cls_names
-                self.local_index_map[source] = {
-                    int(idx): i for i, idx in enumerate(cls_idxs)
-                }
+        # Global (whole dataset) and local (selected sources) target classes
+        self.classes = []
+        _global_index_class_map = {}
+        _global_indexes = {}
+        for source in sources:
+            source_classes = list(
+                line.split(maxsplit=1)
+                for line
+                in (data_path / source / "classes.txt").read_text().splitlines()
+            )
+            cls_indxs = [int(cls_idx) for cls_idx, _ in source_classes]
+            cls_names = [cls_name for _, cls_name in source_classes]
+            self.classes.extend(cls_names)
+            _global_indexes[source] = cls_indxs
+            _global_index_class_map.update(
+                {idx: cls_name for idx, cls_name in zip(cls_indxs, cls_names)}
+            )
+        self.classes = sorted(set(self.classes))
+        self.global_local_index_map = {
+            indx: self.classes.index(cls_name)
+            for indx, cls_name in _global_index_class_map.items()
+        }
+        self.local_indexes = {
+            source: torch.tensor(
+                data=[self.global_local_index_map[idx] for idx in global_indxs],
+                dtype=torch.long,
+            )
+            for source, global_indxs in _global_indexes.items()
+        }
+        self.source_masks = {
+            source: torch.zeros(len(self.classes)).index_fill_(
+                dim=0,
+                index=local_indxs,
+                value=1.0,
+            )
+            for source, local_indxs in self.local_indexes.items()
+        }
         # Not all train images have annotations
         if split == "train" and task != "ssl":
             self.images = {
@@ -102,45 +119,45 @@ class RDD2022(Dataset):
     def __len__(self):
         return self.acc_counts[-1]
 
-    def _compute_from_global_index(self, index):
+    def _compute_location_from_index(self, index):
         for i, acc in enumerate(self.acc_counts[1:]):
             if index < acc:
                 return self.sources[i], index - self.acc_counts[i]
         raise IndexError("Out of range")
 
     def _load_label_for_classification(self, label_path, source):
-        labels = load_bboxes(label_path)["labels"]
-        # Multi-hot encoding
-        if self.independent_labels:
-            labels = [self.local_index_map[source][idx] for idx in labels]
-            multihot = torch.zeros(len(self.local_classes[source]))
-        else:
-            multihot = torch.zeros(len(self.classes))
-        return multihot.index_fill_(
-            dim=0,
-            index=torch.tensor(labels, dtype=torch.long),
-            value=1.0,
-        )
+        labels = [
+            self.global_local_index_map[idx]
+            for idx in load_bboxes(label_path)["labels"]
+        ]
+        return {
+            "target": torch.zeros(len(self.classes)).index_fill_(
+                dim=0,
+                index=torch.tensor(labels, dtype=torch.long),
+                value=1.0,
+            ),
+            "source_mask": self.source_masks[source].clone(),
+        }
 
     def _load_label_for_detection(self, label_path, dim, source):
         bboxes = load_bboxes(label_path)
-        if self.independent_labels:
-            bboxes["labels"] = [
-                self.local_index_map[source][idx] for idx in bboxes["labels"]
-            ]
+        bboxes["labels"] = [
+            self.global_local_index_map[idx] for idx in bboxes["labels"]
+        ]
         return {
             "boxes": tv_tensors.BoundingBoxes(
-                bboxes["boxes"],
+                data=bboxes["boxes"],
                 format="XYXY",
                 canvas_size=dim,
                 clamping_mode="hard",
             ),
             "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
+            "source_classes": self.local_indexes[source].clone(),
         }
 
     def __getitem__(self, index):
-        source, local_index = self._compute_from_global_index(index)
-        image_name = self.images[source][local_index]
+        source, source_index = self._compute_location_from_index(index)
+        image_name = self.images[source][source_index]
         split_dir = self.base / f"{source}/{self.split}"
         image = Image.open(split_dir / f"images/{image_name}").convert("RGB")
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
