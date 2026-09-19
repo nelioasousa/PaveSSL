@@ -52,6 +52,7 @@ def _compute_features(
             cpu_training=(device.type != "cuda"),
         )
     ):
+        targets = targets["target"]
         if isinstance(images, list):
             images = [imgs.to(device, non_blocking=True) for imgs in images]
             feats = model(images[0])
