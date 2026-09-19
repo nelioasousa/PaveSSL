@@ -49,7 +49,10 @@ class RDD2022(Dataset):
             if unknown:
                 raise ValueError(f"Unknown sources: {list(unknown)}")
         sources.sort()
-        self.base = data_path
+        self.base_dir = data_path
+        self.sources_base_dir = {
+            source: str(data_path / source / split) for source in sources
+        }
         self.split = split
         self.sources = sources
         self.task = task
@@ -59,11 +62,11 @@ class RDD2022(Dataset):
         _global_index_class_map = {}
         _global_indexes = {}
         for source in sources:
-            source_classes = list(
+            source_classes = [
                 line.split(maxsplit=1)
                 for line
                 in (data_path / source / "classes.txt").read_text().splitlines()
-            )
+            ]
             cls_indxs = [int(cls_idx) for cls_idx, _ in source_classes]
             cls_names = [cls_name for _, cls_name in source_classes]
             self.classes.extend(cls_names)
@@ -158,14 +161,14 @@ class RDD2022(Dataset):
     def __getitem__(self, index):
         source, source_index = self._compute_location_from_index(index)
         image_name = self.images[source][source_index]
-        split_dir = self.base / f"{source}/{self.split}"
-        image = Image.open(split_dir / f"images/{image_name}").convert("RGB")
+        source_dir = self.sources_base_dir[source]
+        image = Image.open(f"{source_dir}/images/{image_name}").convert("RGB")
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
             if self.transform is None:
                 return image
             return self.transform(image)
-        label_path = split_dir / f"annotations/{image_name[:-3]}txt"
+        label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
         if self.task == "classification":
             label = self._load_label_for_classification(label_path, source)
         else:
