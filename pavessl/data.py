@@ -34,7 +34,7 @@ class RDD2022(Dataset):
         sources: str | list[str] | Literal["all"],
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
-        transform: Transform | None = None,
+        transform: Transform | None = None,  # transforms v2 API
     ):
         data_path = data_path.resolve()
         if not data_path.is_dir():
@@ -43,8 +43,7 @@ class RDD2022(Dataset):
         if sources == "all":
             sources = all_sources
         else:
-            if isinstance(sources, str):
-                sources = [sources]
+            sources = [sources] if isinstance(sources, str) else sources
             unknown = frozenset(sources).difference(all_sources)
             if unknown:
                 raise ValueError(f"Unknown sources: {list(unknown)}")
@@ -59,13 +58,14 @@ class RDD2022(Dataset):
         self.transform = transform
         # Global (whole dataset) and local (selected sources) target classes
         self.classes = []
-        _global_index_class_map = {}
         _global_indexes = {}
+        _global_index_class_map = {}
         for source in sources:
             source_classes = [
                 line.split(maxsplit=1)
-                for line
-                in (data_path / source / "classes.txt").read_text().splitlines()
+                for line in (data_path / source / "classes.txt")
+                .read_text()
+                .splitlines()
             ]
             cls_indxs = [int(cls_idx) for cls_idx, _ in source_classes]
             cls_names = [cls_name for _, cls_name in source_classes]
@@ -86,7 +86,7 @@ class RDD2022(Dataset):
             )
             for source, global_indxs in _global_indexes.items()
         }
-        self.source_masks = {
+        self.sources_mask = {
             source: torch.zeros(len(self.classes)).index_fill_(
                 dim=0,
                 index=local_indxs,
@@ -100,8 +100,8 @@ class RDD2022(Dataset):
                 source: [
                     f"{label.stem}.jpg"
                     for label in (
-                        data_path / f"{source}/{split}/annotations"
-                    ).iterdir()
+                        (data_path / f"{source}/{split}/annotations").iterdir()
+                    )
                 ]
                 for source in sources
             }
@@ -110,8 +110,8 @@ class RDD2022(Dataset):
                 source: [
                     image.name
                     for image in (
-                        data_path / f"{source}/{split}/images"
-                    ).iterdir()
+                        (data_path / f"{source}/{split}/images").iterdir()
+                    )
                 ]
                 for source in sources
             }
@@ -139,7 +139,7 @@ class RDD2022(Dataset):
                 index=torch.tensor(labels, dtype=torch.long),
                 value=1.0,
             ),
-            "source_mask": self.source_masks[source].clone(),
+            "source_mask": self.sources_mask[source].clone(),
         }
 
     def _load_label_for_detection(self, label_path, dim, source):
