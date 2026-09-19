@@ -369,7 +369,7 @@ def _get_train_data(target_sources, args):
         shuffle=True,
         num_workers=args.num_workers,
         collate_fn=SSLMultiviewTransform.multiview_collate_fn,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True,
         persistent_workers=True,
     )
