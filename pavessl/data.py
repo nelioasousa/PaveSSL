@@ -245,7 +245,7 @@ class BalancedSampler(Sampler[list[tuple[str, int]]]):
         for source, size in self._sources_participation.items():
             indices.extend(
                 (source, indx.item())
-                for indx in self._indexes[source][i * size : (i+1) * size]
+                for indx in self._indexes[source][i * size : (i + 1) * size]
             )
         self._batch += 1
         return indices

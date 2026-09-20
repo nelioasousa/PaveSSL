@@ -9,8 +9,7 @@ import torchvision.models
 from torch import nn
 from torch.utils.data import DataLoader
 
-from pavessl import models
-from pavessl import utils
+from pavessl import models, utils
 from pavessl.data import RDD2022, SSLMultiviewTransform, get_rdd2022_sources
 from pavessl.scripts.knn_eval import knn_eval
 
