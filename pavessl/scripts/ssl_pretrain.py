@@ -45,8 +45,8 @@ def _get_loss_function(device, args):
         projection_dim=args.projection_dim,
         num_local_views=args.num_local_views,
         teacher_temp=args.teacher_temp,
-        teacher_temp_start=args.teacher_temp_start,
-        teacher_temp_warmup=args.teacher_temp_warmup,
+        teacher_temp_start=args.teacher_temp_warmup_start,
+        teacher_temp_warmup=args.teacher_temp_warmup_size,
         num_epochs=args.epochs,
         student_temp=args.student_temp,
         center_momentum=args.center_momentum,
@@ -308,7 +308,7 @@ def _train_one_epoch(
         # Student update
         optimizer.zero_grad()
         loss.backward()
-        if epoch < args.freeze_last_layer:
+        if epoch < args.freeze_last_layer_for:
             # Freeze last layer of the projection head in this iteration
             student.global_head.last_layer.zero_grad(set_to_none=True)
             student.local_head.last_layer.zero_grad(set_to_none=True)
@@ -341,11 +341,14 @@ def _check_args(args):
     args.epochs = max(1, args.epochs)
     args.batch_size = max(args.batch_size, len(args.sources))
     args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
-    args.teacher_temp_warmup = max(
+    args.teacher_temp_warmup_size = max(
         0,
-        min(args.teacher_temp_warmup, args.epochs),
+        min(args.teacher_temp_warmup_size, args.epochs),
     )
-    args.freeze_last_layer = max(0, min(args.freeze_last_layer, args.epochs))
+    args.freeze_last_layer_for = max(
+        0,
+        min(args.freeze_last_layer_for, args.epochs),
+    )
     args.num_local_views = max(args.num_local_views, 1)
     args.checkpoint_freq = (
         args.checkpoint_freq if args.checkpoint_freq > 0 else args.epochs
@@ -368,8 +371,8 @@ def get_args_parser():
     # Sharpness temperature
     parser.add_argument("--student-temp", type=float, default=0.1)
     parser.add_argument("--teacher-temp", type=float, default=0.04)
-    parser.add_argument("--teacher-temp-start", type=float, default=0.02)
-    parser.add_argument("--teacher-temp-warmup", type=int, default=3)
+    parser.add_argument("--teacher-temp-warmup-size", type=int, default=3)
+    parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
     # Training/optim parameters
     parser.add_argument("--increment", action="store_true")
     parser.add_argument("--epochs", type=int, default=200)
@@ -386,7 +389,7 @@ def get_args_parser():
         choices=["adamw", "sgd"],
         default="adamw",
     )
-    parser.add_argument("--freeze-last-layer", type=int, default=3)
+    parser.add_argument("-f", "--freeze-last-layer-for", type=int, default=3)
     # Multi-view
     parser.add_argument("--global-size", type=int, default=448)
     parser.add_argument(
