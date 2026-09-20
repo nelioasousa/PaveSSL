@@ -1,5 +1,6 @@
 import argparse
 import math
+import pickle
 import time
 from pathlib import Path
 
@@ -14,22 +15,7 @@ from pavessl.data import RDD2022, SSLMultiviewTransform, get_rdd2022_sources
 from pavessl.scripts.knn_eval import knn_eval
 
 
-def pretrain(args):
-    utils.set_random_seeds(42)
-    save_dir = args.save_dir / args.save_folder
-    save_dir.mkdir(exist_ok=True, parents=True)
-    target_sources = get_rdd2022_sources(args.sources_subset)
-    # Check some arguments
-    args.epochs = max(1, args.epochs)
-    args.batch_size = max(args.batch_size, len(target_sources))
-    args.lr_warmup_size = min(args.lr_warmup_size, args.epochs)
-    args.teacher_temp_warmup = min(args.teacher_temp_warmup, args.epochs)
-    args.freeze_last_layer = min(args.freeze_last_layer, args.epochs)
-    args.num_local_views = max(args.num_local_views, 1)
-    args.checkpoint_freq = (
-        args.checkpoint_freq if args.checkpoint_freq > 0 else args.epochs
-    )
-    # Load backbone and build networks
+def _get_models(device, args):
     if args.dino_base:
         backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
     else:
@@ -44,9 +30,6 @@ def pretrain(args):
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
-    device = torch.device(
-        torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
-    )
     student = student.to(device=device, non_blocking=True)
     teacher = teacher.to(device=device, non_blocking=True)
     # Teacher and Student start with the same weights
@@ -54,9 +37,10 @@ def pretrain(args):
     # There is no backpropagation through the teacher
     for p in teacher.parameters():
         p.requires_grad = False
-    # Data
-    _, train_loader = _get_train_data(target_sources, args)
-    # Prepare loss function
+    return student, teacher
+
+
+def _get_loss_function(device, args):
     loss_fn = models.SSLLoss(
         projection_dim=args.projection_dim,
         num_local_views=args.num_local_views,
@@ -67,15 +51,104 @@ def pretrain(args):
         student_temp=args.student_temp,
         center_momentum=args.center_momentum,
     )
-    loss_fn = loss_fn.to(device=device, non_blocking=True)
-    # Optim
-    params_groups = utils.get_params_groups(student)
+    return loss_fn.to(device=device, non_blocking=True)
+
+
+def _get_optimizer(model, args):
+    params_groups = utils.get_params_groups(model)
     if args.optim == "adamw":
-        optimizer = torch.optim.AdamW(params_groups)
-    elif args.optim == "sgd":
-        optimizer = torch.optim.SGD(params_groups, momentum=0.9)
+        return torch.optim.AdamW(params_groups)
+    if args.optim == "sgd":
+        return torch.optim.SGD(params_groups, momentum=0.9)
+    raise ValueError(f'Optimizer "{args.optim}" not supported')
+
+
+def _save_args(args, run_number):
+    with (args.save_dir / f"run{run_number}.args").open("wb") as args_file:
+        pickle.dump(obj=args, file=args_file, protocol=5)
+
+
+def _check_run(args):
+    runs = [
+        int(file.stem[3:]) for file in args.save_dir.glob(r"run[0-9]*.args")
+    ]
+    if not runs:
+        _save_args(args, 1)
+        return args, 1
+    latest = max(runs)
+    with (args.save_dir / f"run{latest}.args").open("rb") as args_file:
+        return pickle.load(args_file), latest
+
+
+def pretrain(args):
+    utils.set_random_seeds(42)
+    stored_args, run_number = _check_run(args)
+    device = torch.device(
+        torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+    )
+    # Models
+    student, teacher = _get_models(device, stored_args)
+    # Data
+    train_loader = _get_train_data_loader(stored_args)
+    # Loss function
+    loss_fn = _get_loss_function(device, stored_args)
+    # Optimizer
+    optimizer = _get_optimizer(student, stored_args)
+    # k-NN validation
+    valid_ks = [10, 25, 50, 100]
+    valid_metrics = ("accuracy", "sensitivity", "specificity")
+    index_step = len(valid_ks) * len(valid_metrics)
+    # Resume training
+    to_restore = {
+        "epoch": 0,
+        "loss_history": None,
+        "valid_history": None,
+    }
+    utils.restart_from_checkpoint(
+        ckp_path=(stored_args.save_dir / f"run{run_number}_checkpoint.pth"),
+        run_variables=to_restore,
+        student=student,
+        teacher=teacher,
+        loss=loss_fn,
+        optimizer=optimizer,
+    )
+    # Check run state
+    if to_restore["epoch"] == stored_args.epochs:
+        if not args.increment:
+            print("Training already finished.")
+            print("Use --increment to increment upon previous training run.")
+            return
+        run_number += 1
+        args.projection_dim = stored_args.projection_dim
+        args.dino_base = False
+        _save_args(args, run_number)
+        # Re-build with the new arguments
+        train_loader = _get_train_data_loader(args)
+        loss_fn = _get_loss_function(device, args)
+        optimizer = _get_optimizer(student, args)
+        # Unset run variables
+        to_restore["epoch"] = 0
+        to_restore["loss_history"] = None
+        to_restore["valid_history"] = None
     else:
-        raise ValueError(f"Optimizer {args.optim} not supported")
+        if to_restore["epoch"]:
+            print("Restoring previous run arguments...")
+            print("Continuing training from epoch", to_restore["epoch"])
+        args = stored_args
+    # Restore loss and validation histories
+    loss_history = (
+        np.zeros((args.epochs, 3), dtype=np.float32)
+        if to_restore["loss_history"] is None
+        else to_restore["loss_history"]
+    )
+    valid_history = (
+        np.zeros(
+            (args.epochs, len(args.sources) * index_step),
+            dtype=np.float32,
+        )
+        if to_restore["valid_history"] is None
+        else to_restore["valid_history"]
+    )
     # Schedulers
     lr_schedule = utils.cosine_scheduler(
         base_value=(args.lr * args.batch_size / 256.0),
@@ -97,34 +170,6 @@ def pretrain(args):
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
     )
-    # k-NN validation
-    valid_ks = [10, 25, 50, 100]
-    ## Metrics to store:
-    ##   Only "accuracy", "sensitivity", and "specificity" are available
-    valid_metrics = ("accuracy", "sensitivity", "specificity")
-    index_step = len(valid_ks) * len(valid_metrics)
-    # Resume training
-    to_restore = {
-        "epoch": 0,
-        "loss_history": np.zeros((args.epochs, 3), dtype=np.float32),
-        "valid_history": np.zeros(
-            (
-                args.epochs,
-                len(target_sources) * len(valid_ks) * len(valid_metrics),
-            ),
-            dtype=np.float32,
-        ),
-    }
-    utils.restart_from_checkpoint(
-        save_dir / "checkpoint.pth",
-        run_variables=to_restore,
-        student=student,
-        teacher=teacher,
-        optimizer=optimizer,
-        loss=loss_fn,
-    )
-    loss_history = to_restore["loss_history"]
-    valid_history = to_restore["valid_history"]
     # Training
     start_time = time.monotonic()
     for epoch in range(to_restore["epoch"], args.epochs):
@@ -141,9 +186,11 @@ def pretrain(args):
             device=device,
             args=args,
         )
-        loss_history[epoch, 0] = loss_log.min_value
-        loss_history[epoch, 1] = loss_log.max_value
-        loss_history[epoch, 2] = loss_log.global_avg
+        loss_history[epoch] = [
+            loss_log.min_value,
+            loss_log.max_value,
+            loss_log.global_avg,
+        ]
         # Run validation
         teacher.eval()
         eval_results = knn_eval(
@@ -152,7 +199,7 @@ def pretrain(args):
             distance_temperature=0.07,
             pred_threshold=0.5,
             data_path=args.data,
-            target_sources=target_sources,
+            target_sources=args.sources,
             crop_size=args.global_size,
             num_crops=3,
             crops_overlap=0.3,
@@ -160,10 +207,9 @@ def pretrain(args):
             num_workers=args.num_workers,
             simplified=True,
         )
-        for i, source in enumerate(target_sources):
-            source_rsts = eval_results[source]
+        for i, source in enumerate(args.sources):
             valid_history[epoch, i * index_step : (i + 1) * index_step] = [
-                source_rsts[metric][i]
+                eval_results[source][metric][i]
                 for i in range(len(valid_ks))
                 for metric in valid_metrics
             ]
@@ -176,20 +222,19 @@ def pretrain(args):
             "epoch": epoch + 1,
             "loss_history": loss_history,
             "valid_history": valid_history,
-            "args": args,
         }
         utils.save_states(
-            save_file=save_dir / "checkpoint.pth",
+            save_file=(args.save_dir / f"run{run_number}_checkpoint.pth"),
             states_dict=states_dict,
         )
-        if args.checkpoint_freq and not (epoch % args.checkpoint_freq):
-            utils.save_states(
-                save_file=save_dir / f"checkpoint_{epoch:04d}.pth",
-                states_dict=states_dict,
+        if epoch % args.checkpoint_freq:
+            ckpt_file = (
+                args.save_dir / f"run{run_number}_checkpoint_{epoch:04d}.pth"
             )
+            utils.save_states(save_file=ckpt_file, states_dict=states_dict)
     # Save histories and report run duration
     np.savetxt(
-        fname=save_dir / "loss_history.csv",
+        fname=(args.save_dir / "loss_history.csv"),
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
@@ -197,13 +242,13 @@ def pretrain(args):
         comments="",
     )
     np.savetxt(
-        fname=save_dir / "valid_history.csv",
+        fname=(args.save_dir / "valid_history.csv"),
         X=valid_history,
         delimiter=",",
         fmt="%.4f",
         header=",".join(
             f"{source}_{k}_{metric}"
-            for source in target_sources
+            for source in args.sources
             for k in valid_ks
             for metric in valid_metrics
         ),
@@ -289,6 +334,25 @@ def _train_one_epoch(
     return metric_logger.meters["loss"]
 
 
+def _check_args(args):
+    args.save_dir = args.save_dir / args.save_folder
+    args.save_dir.mkdir(exist_ok=True, parents=True)
+    args.sources = get_rdd2022_sources(args.sources_subset)
+    args.epochs = max(1, args.epochs)
+    args.batch_size = max(args.batch_size, len(args.sources))
+    args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
+    args.teacher_temp_warmup = max(
+        0,
+        min(args.teacher_temp_warmup, args.epochs),
+    )
+    args.freeze_last_layer = max(0, min(args.freeze_last_layer, args.epochs))
+    args.num_local_views = max(args.num_local_views, 1)
+    args.checkpoint_freq = (
+        args.checkpoint_freq if args.checkpoint_freq > 0 else args.epochs
+    )
+    return args
+
+
 def get_args_parser():
     parser = argparse.ArgumentParser()
     # Architecture/weights
@@ -307,6 +371,7 @@ def get_args_parser():
     parser.add_argument("--teacher-temp-start", type=float, default=0.02)
     parser.add_argument("--teacher-temp-warmup", type=int, default=3)
     # Training/optim parameters
+    parser.add_argument("--increment", action="store_true")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=5e-4)
@@ -357,7 +422,7 @@ def get_args_parser():
     return parser
 
 
-def _get_train_data(target_sources, args):
+def _get_train_data_loader(args):
     multiview_trans = SSLMultiviewTransform(
         global_size=args.global_size,
         global_scale=args.global_scale,
@@ -367,7 +432,7 @@ def _get_train_data(target_sources, args):
     )
     train_dataset = RDD2022(
         data_path=args.data,
-        sources=target_sources,
+        sources=args.sources,
         split="train",
         task="ssl",
         transform=multiview_trans,
@@ -380,14 +445,14 @@ def _get_train_data(target_sources, args):
         pin_memory=False,
         persistent_workers=True,
     )
-    return train_dataset, train_loader
+    return train_loader
 
 
 def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        pretrain(args)
+        pretrain(_check_args(args))
         return 0
     except Exception:
         import traceback
