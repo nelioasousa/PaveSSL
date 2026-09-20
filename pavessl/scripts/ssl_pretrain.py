@@ -194,6 +194,7 @@ def pretrain(args):
         delimiter=",",
         fmt="%20.10e",
         header="min,max,avg",
+        comments="",
     )
     np.savetxt(
         fname=save_dir / "valid_history.csv",
@@ -206,6 +207,7 @@ def pretrain(args):
             for k in valid_ks
             for metric in valid_metrics
         ),
+        comments="",
     )
     train_duration = int(time.monotonic() - start_time)
     print(f"Training ended in {utils.get_time_string(train_duration)}!")

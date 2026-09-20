@@ -1,2 +1,4 @@
 pillow
 tqdm
+matplotlib
+pandas
