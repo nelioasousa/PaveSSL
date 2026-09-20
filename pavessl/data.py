@@ -118,6 +118,11 @@ class RDD2022(Dataset):
         self.counts = [len(self.images[source]) for source in sources]
         self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
+        # Sources sample weights
+        self.sources_weight = {
+            source: self.acc_counts[-1] / (count * len(self.classes))
+            for source, count in zip(sources, self.counts)
+        }
 
     def __len__(self):
         return self.acc_counts[-1]
@@ -139,7 +144,8 @@ class RDD2022(Dataset):
                 index=torch.tensor(labels, dtype=torch.long),
                 value=1.0,
             ),
-            "source_mask": self.sources_mask[source].clone(),
+            "weight": self.sources_weight[source],
+            "mask": self.sources_mask[source].clone(),
         }
 
     def _load_detection_label(self, label_path, dim, source):
@@ -155,7 +161,8 @@ class RDD2022(Dataset):
                 clamping_mode="hard",
             ),
             "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
-            "source_classes": self.local_indexes[source].clone(),
+            "weight": self.sources_weight[source],
+            "classes": self.local_indexes[source].clone(),
         }
 
     def __getitem__(self, item_ref: int | tuple[str, int]):
