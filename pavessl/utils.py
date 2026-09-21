@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 from collections import defaultdict, deque
@@ -258,3 +259,44 @@ class MetricLogger:
                 total_time / len(iterable),
             )
         )
+
+
+def get_base_args_parser():
+    parser = argparse.ArgumentParser()
+    # Data related arguments
+    parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
+    parser.add_argument(
+        "--sources-subset",
+        choices=[1, 2, 3],
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        default=Path("data/results/ssl_pretrain"),
+    )
+    parser.add_argument("--save-folder", type=str, required=True)
+    # Training related arguments
+    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--lr-end", type=float, default=1e-6)
+    parser.add_argument("--lr-warmup-size", type=int, default=10)
+    parser.add_argument("--lr-warmup-start", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=0.04)
+    parser.add_argument("--weight-decay-end", type=float, default=0.4)
+    parser.add_argument("--disable-warmups", action="store_true")
+    parser.add_argument("--disable-schedules", action="store_true")
+    parser.add_argument(
+        "--optim",
+        type=str,
+        choices=["adamw", "sgd"],
+        default="adamw",
+    )
+    parser.add_argument("--increment", action="store_true")
+    parser.add_argument("--increment-suffix", type=str, default="_inc")
+    parser.add_argument("--validation-freq", type=int, default=5)
+    parser.add_argument("--checkpoint-freq", type=int, default=10)
+    parser.add_argument("--num-workers", type=int, default=6)
+    return parser

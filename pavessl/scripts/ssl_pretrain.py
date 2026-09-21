@@ -385,43 +385,27 @@ def _check_args(args):
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser()
-    # Architecture/weights
-    # parser.add_argument(
-    #     "--archi", type=str,
-    #     choices=["resnet50", "vits16"], default="resnet50",
-    # )
+    parser = argparse.ArgumentParser(
+        description=(
+            "Self-supervised backbone pre-training "
+            "using DINOv1 with multi-task heads."
+        ),
+        parents=[utils.get_base_args_parser()],
+    )
+    # Architecture
     parser.add_argument("--dino-base", action="store_true")
     parser.add_argument("--projection-dim", type=int, default=16384)
     # Momentum coefficients
     parser.add_argument("--teacher-momentum", type=float, default=0.996)
     parser.add_argument("--center-momentum", type=float, default=0.9)
+    # Training stability
+    parser.add_argument("--freeze-last-layer-for", type=int, default=3)
     # Sharpness temperature
     parser.add_argument("--student-temp", type=float, default=0.1)
     parser.add_argument("--teacher-temp", type=float, default=0.04)
     parser.add_argument("--teacher-temp-warmup-size", type=int, default=3)
     parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
-    # Training/optim parameters
-    parser.add_argument("--increment", action="store_true")
-    parser.add_argument("--increment-suffix", type=str, default="_inc")
-    parser.add_argument("--disable-warmups", action="store_true")
-    parser.add_argument("--disable-schedules", action="store_true")
-    parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--lr-end", type=float, default=1e-6)
-    parser.add_argument("--lr-warmup-size", type=int, default=10)
-    parser.add_argument("--lr-warmup-start", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=0.04)
-    parser.add_argument("--weight-decay-end", type=float, default=0.4)
-    parser.add_argument(
-        "--optim",
-        type=str,
-        choices=["adamw", "sgd"],
-        default="adamw",
-    )
-    parser.add_argument("--freeze-last-layer-for", type=int, default=3)
-    # Multi-view
+    # Multi-view configuration
     parser.add_argument("--global-size", type=int, default=448)
     parser.add_argument(
         "--global-scale",
@@ -437,23 +421,6 @@ def get_args_parser():
         default=(0.125, 0.4),
     )
     parser.add_argument("--num-local-views", type=int, default=2)
-    # Others
-    parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
-    parser.add_argument(
-        "--sources-subset",
-        choices=[1, 2, 3],
-        type=int,
-        default=1,
-    )
-    parser.add_argument(
-        "--save-dir",
-        type=Path,
-        default=Path("data/results/ssl_pretrain"),
-    )
-    parser.add_argument("--save-folder", type=str, required=True)
-    parser.add_argument("--validation-freq", type=int, default=5)
-    parser.add_argument("--checkpoint-freq", type=int, default=10)
-    parser.add_argument("--num-workers", type=int, default=6)
     return parser
 
 
