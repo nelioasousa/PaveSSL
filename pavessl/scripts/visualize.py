@@ -1,10 +1,9 @@
-from pathlib import Path
 import argparse
-import numpy as np
-import pandas as pd
-from matplotlib.axes import Axes
+from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 
 def plot_loss_history(
@@ -70,7 +69,7 @@ def plot_valid_history(valid_history_csv: Path, save_file: Path):
                 ax.legend()
             if j == len(ks) - 1:
                 ax.tick_params(
-                    axis='y',
+                    axis="y",
                     left=False,
                     right=True,
                     labelleft=False,
@@ -116,7 +115,6 @@ def main(args):
             valid_history_csv=(exp_dir / "valid_history.csv"),
             save_file=(plots_dir / "valid_history.png"),
         )
-    return
 
 
 def run():

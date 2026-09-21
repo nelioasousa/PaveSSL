@@ -2,7 +2,6 @@ import argparse
 import math
 import pickle
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -135,7 +134,7 @@ def pretrain(args):
         if vars_to_restore["epoch"]:
             print(
                 "Run arguments restored.",
-                f"Continuing training from epoch {vars_to_restore["epoch"]}.",
+                f"Continuing training from epoch {vars_to_restore['epoch']}.",
             )
         args = stored_args
     print(f'Saving results in "{args.results_dir}"')
@@ -346,13 +345,14 @@ def _eval(model, ks, metrics, args):
         num_workers=args.num_workers,
         simplified=True,
     )
-    results = np.array([
-        eval_results[source][metric][i]
-        for source in args.sources
-        for i in range(len(ks))
-        for metric in metrics
-    ])
-    return results
+    return np.array(
+        [
+            eval_results[source][metric][i]
+            for source in args.sources
+            for i in range(len(ks))
+            for metric in metrics
+        ]
+    )
 
 
 def _check_args(args):
