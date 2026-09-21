@@ -210,13 +210,13 @@ class SSLLoss(nn.Module):
                 -centered[0] * F.log_softmax(student_global_out[1], dim=-1),
                 dim=-1,
             )
-        ).mean()
+        ).sum()
         total_loss += (
             weights * torch.sum(
                 -centered[1] * F.log_softmax(student_global_out[0], dim=-1),
                 dim=-1,
             )
-        ).mean()
+        ).sum()
         ## Global vs Local
         for student_i_local in student_local_out:
             total_loss += (
@@ -224,13 +224,13 @@ class SSLLoss(nn.Module):
                     -centered[0] * F.log_softmax(student_i_local, dim=-1),
                     dim=-1,
                 )
-            ).mean()
+            ).sum()
             total_loss += (
                 weights * torch.sum(
                     -centered[1] * F.log_softmax(student_i_local, dim=-1),
                     dim=-1,
                 )
-            ).mean()
+            ).sum()
         total_loss /= (2 * self.num_local_crops + 2)
         # Update center
         self.update_center(teacher_out)

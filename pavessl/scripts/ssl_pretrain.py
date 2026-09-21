@@ -282,6 +282,7 @@ def _train_one_epoch(
         global_views = global_views.to(device=device, non_blocking=True)
         local_views = local_views.to(device=device, non_blocking=True)
         weights = weights.to(device=device, non_blocking=True)
+        weights.div_(weights.sum())
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
