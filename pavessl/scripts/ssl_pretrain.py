@@ -28,7 +28,7 @@ def _get_models(device, args):
     teacher = models.SingleHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
-        head_norm_last_layer=True,
+        head_norm_last_layer=False,
     )
     student = student.to(device=device, non_blocking=True)
     teacher = teacher.to(device=device, non_blocking=True)
