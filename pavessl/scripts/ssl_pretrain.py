@@ -97,7 +97,6 @@ def pretrain(args):
     # k-NN validation
     valid_ks = [10, 25, 50, 100]
     valid_metrics = ("accuracy", "sensitivity", "specificity")
-    index_step = len(valid_ks) * len(valid_metrics)
     # Resume training
     to_restore = {
         "epoch": 0,
@@ -143,7 +142,10 @@ def pretrain(args):
     )
     valid_history = (
         np.zeros(
-            (args.epochs, len(args.sources) * index_step),
+            (
+                1 + math.ceil((args.epochs - 1) / args.validation_freq),
+                len(args.sources) * len(valid_ks) * len(valid_metrics),
+            ),
             dtype=np.float32,
         )
         if to_restore["valid_history"] is None
@@ -192,27 +194,13 @@ def pretrain(args):
             loss_log.global_avg,
         ]
         # Run validation
-        teacher.eval()
-        eval_results = knn_eval(
-            model=teacher.backbone,
-            k=valid_ks,
-            distance_temperature=0.07,
-            pred_threshold=0.5,
-            data_path=args.data,
-            target_sources=args.sources,
-            crop_size=args.global_size,
-            num_crops=3,
-            crops_overlap=0.3,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            simplified=True,
-        )
-        for i, source in enumerate(args.sources):
-            valid_history[epoch, i * index_step : (i + 1) * index_step] = [
-                eval_results[source][metric][i]
-                for i in range(len(valid_ks))
-                for metric in valid_metrics
-            ]
+        if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
+            valid_history[math.ceil(epoch / args.validation_freq)] = _eval(
+                model=teacher,
+                ks=valid_ks,
+                metrics=valid_metrics,
+                args=args,
+            )
         # Save checkpoints
         states_dict = {
             "student": student.state_dict(),
@@ -227,7 +215,7 @@ def pretrain(args):
             save_file=(args.save_dir / f"run{run_number}_checkpoint.pth"),
             states_dict=states_dict,
         )
-        if epoch % args.checkpoint_freq:
+        if not (epoch % args.checkpoint_freq):
             ckpt_file = (
                 args.save_dir / f"run{run_number}_checkpoint_{epoch:04d}.pth"
             )
@@ -334,6 +322,31 @@ def _train_one_epoch(
     return metric_logger.meters["loss"]
 
 
+def _eval(model, ks, metrics, args):
+    model.eval()
+    eval_results = knn_eval(
+        model=model.backbone,
+        k=ks,
+        distance_temperature=0.07,
+        pred_threshold=0.5,
+        data_path=args.data,
+        target_sources=args.sources,
+        crop_size=args.global_size,
+        num_crops=3,
+        crops_overlap=0.3,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        simplified=True,
+    )
+    results = np.array([
+        eval_results[source][metric][i]
+        for source in args.sources
+        for i in range(len(ks))
+        for metric in metrics
+    ])
+    return results
+
+
 def _check_args(args):
     args.save_dir = args.save_dir / args.save_folder
     args.save_dir.mkdir(exist_ok=True, parents=True)
@@ -420,6 +433,7 @@ def get_args_parser():
         default=Path("data/results/ssl_pretrain"),
     )
     parser.add_argument("--save-folder", type=str, required=True)
+    parser.add_argument("--validation-freq", type=int, default=5)
     parser.add_argument("--checkpoint-freq", type=int, default=10)
     parser.add_argument("--num-workers", type=int, default=6)
     return parser
