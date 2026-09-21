@@ -262,7 +262,7 @@ class MetricLogger:
 
 
 def get_base_args_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     # Data related arguments
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument(
