@@ -222,7 +222,7 @@ def pretrain(args):
             utils.save_states(save_file=ckpt_file, states_dict=states_dict)
     # Save histories and report run duration
     np.savetxt(
-        fname=(args.save_dir / "loss_history.csv"),
+        fname=(args.save_dir / f"run{run_number}_loss_history.csv"),
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
@@ -230,7 +230,7 @@ def pretrain(args):
         comments="",
     )
     np.savetxt(
-        fname=(args.save_dir / "valid_history.csv"),
+        fname=(args.save_dir / f"run{run_number}_valid_history.csv"),
         X=valid_history,
         delimiter=",",
         fmt="%.4f",
@@ -275,6 +275,7 @@ def _train_one_epoch(
     ):
         global_views = global_views.to(device=device, non_blocking=True)
         local_views = local_views.to(device=device, non_blocking=True)
+        weights = weights.to(device=device, non_blocking=True)
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
