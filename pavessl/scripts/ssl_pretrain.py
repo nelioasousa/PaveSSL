@@ -114,13 +114,12 @@ def pretrain(args):
             print("Use --increment to increment upon this training run.")
             return
         # Increment finished training run
-        increment = 1
-        while (args.save_dir / f"{args.save_folder}_i{increment}").is_dir():
-            increment += 1
-        # Sync some arguments
-        args.save_folder = f"{args.save_folder}_i{increment}"
+        args.save_folder = f"{args.save_folder}{args.increment_suffix}"
         args.results_dir = args.save_dir / args.save_folder
         args.results_dir.mkdir(exist_ok=True, parents=True)
+        if (args.results_dir / "run.args").is_file():
+            raise ValueError(f'Directory "{args.results_dir}" already in use.')
+        # Sync some arguments
         args.projection_dim = stored_args.projection_dim
         args.dino_base = False
         _save_args(args)
@@ -404,6 +403,7 @@ def get_args_parser():
     parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
     # Training/optim parameters
     parser.add_argument("--increment", action="store_true")
+    parser.add_argument("--increment-suffix", type=str, default="_inc")
     parser.add_argument("--disable-warmups", action="store_true")
     parser.add_argument("--disable-schedules", action="store_true")
     parser.add_argument("--epochs", type=int, default=200)
