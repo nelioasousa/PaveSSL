@@ -420,7 +420,7 @@ def get_args_parser():
         choices=["adamw", "sgd"],
         default="adamw",
     )
-    parser.add_argument("-f", "--freeze-last-layer-for", type=int, default=3)
+    parser.add_argument("--freeze-last-layer-for", type=int, default=3)
     # Multi-view
     parser.add_argument("--global-size", type=int, default=448)
     parser.add_argument(
