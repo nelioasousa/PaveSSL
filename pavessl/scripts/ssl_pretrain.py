@@ -110,14 +110,17 @@ def pretrain(args):
     # Check run state
     if vars_to_restore["epoch"] == stored_args.epochs:
         if not args.increment:
-            print("Training already finished.")
+            print(f'Training at "{stored_args.results_dir}" already finished.')
             print("Use --increment to increment upon this training run.")
             return
+        # Increment finished training run
         increment = 1
         while (args.save_dir / f"{args.save_folder}_i{increment}").is_dir():
             increment += 1
+        # Sync some arguments
         args.save_folder = f"{args.save_folder}_i{increment}"
         args.results_dir = args.save_dir / args.save_folder
+        args.results_dir.mkdir(exist_ok=True, parents=True)
         args.projection_dim = stored_args.projection_dim
         args.dino_base = False
         _save_args(args)
@@ -131,8 +134,10 @@ def pretrain(args):
         vars_to_restore["valid_history"] = None
     else:
         if vars_to_restore["epoch"]:
-            print("Restoring previous run arguments...")
-            print("Continuing training from epoch", vars_to_restore["epoch"])
+            print(
+                "Run arguments restored.",
+                f"Continuing training from epoch {vars_to_restore["epoch"]}.",
+            )
         args = stored_args
     print(f'Saving results in "{args.results_dir}"')
     # Restore loss and validation histories
@@ -217,10 +222,10 @@ def pretrain(args):
             states_dict=states_dict,
         )
         if not (epoch % args.checkpoint_freq):
-            ckpt_file = (
-                args.results_dir / "checkpoint_{epoch:04d}.pth"
+            utils.save_states(
+                save_file=(args.results_dir / f"checkpoint_{epoch:04d}.pth"),
+                states_dict=states_dict,
             )
-            utils.save_states(save_file=ckpt_file, states_dict=states_dict)
     # Save histories and report run duration
     np.savetxt(
         fname=(args.results_dir / "loss_history.csv"),
