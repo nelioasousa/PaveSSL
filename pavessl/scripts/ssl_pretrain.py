@@ -361,11 +361,18 @@ def _check_args(args):
     args.sources = get_rdd2022_sources(args.sources_subset)
     args.epochs = max(1, args.epochs)
     args.batch_size = max(args.batch_size, len(args.sources))
-    args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
-    args.teacher_temp_warmup_size = max(
-        0,
-        min(args.teacher_temp_warmup_size, args.epochs),
-    )
+    if args.disable_schedules:
+        args.lr_end = args.lr
+        args.weight_decay_end = args.weight_decay
+    if args.disable_warmups:
+        args.lr_warmup_size = 0
+        args.teacher_temp_warmup_size = 0
+    else:
+        args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
+        args.teacher_temp_warmup_size = max(
+            0,
+            min(args.teacher_temp_warmup_size, args.epochs),
+        )
     args.freeze_last_layer_for = max(
         0,
         min(args.freeze_last_layer_for, args.epochs),
@@ -396,6 +403,8 @@ def get_args_parser():
     parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
     # Training/optim parameters
     parser.add_argument("--increment", action="store_true")
+    parser.add_argument("--disable-warmups", action="store_true")
+    parser.add_argument("--disable-schedules", action="store_true")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=5e-4)
