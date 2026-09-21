@@ -270,7 +270,7 @@ def _train_one_epoch(
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     epoch_str = str(epoch + 1).rjust(len(str(args.epochs)), "0")
     header = f"(Train) Epoch: [{epoch_str}/{args.epochs}]"
-    for it, (global_views, local_views) in enumerate(
+    for it, (global_views, local_views, weights) in enumerate(
         metric_logger.log_every(data_loader, 10, header)
     ):
         global_views = global_views.to(device=device, non_blocking=True)
@@ -287,6 +287,7 @@ def _train_one_epoch(
             teacher_out,
             student_g_out,
             student_l_out,
+            weights,
             epoch,
         )
         # Loss explosion, unstable training

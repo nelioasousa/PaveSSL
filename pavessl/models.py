@@ -189,6 +189,7 @@ class SSLLoss(nn.Module):
         teacher_out,
         student_global_out,
         student_local_out,
+        weights,
         epoch,
     ):
         # Student sharpening
@@ -203,26 +204,34 @@ class SSLLoss(nn.Module):
         centered = centered.chunk(2)
         # Loss computation
         total_loss = 0.0
-        ## Teacher global x Student global
-        total_loss += torch.sum(
-            -centered[0] * F.log_softmax(student_global_out[1], dim=-1),
-            dim=-1,
+        ## Global vs Global
+        total_loss += (
+            weights * torch.sum(
+                -centered[0] * F.log_softmax(student_global_out[1], dim=-1),
+                dim=-1,
+            )
         ).mean()
-        total_loss += torch.sum(
-            -centered[1] * F.log_softmax(student_global_out[0], dim=-1),
-            dim=-1,
+        total_loss += (
+            weights * torch.sum(
+                -centered[1] * F.log_softmax(student_global_out[0], dim=-1),
+                dim=-1,
+            )
         ).mean()
-        ## Teacher global x Student local
+        ## Global vs Local
         for student_i_local in student_local_out:
-            total_loss += torch.sum(
-                -centered[0] * F.log_softmax(student_i_local, dim=-1),
-                dim=-1,
+            total_loss += (
+                weights * torch.sum(
+                    -centered[0] * F.log_softmax(student_i_local, dim=-1),
+                    dim=-1,
+                )
             ).mean()
-            total_loss += torch.sum(
-                -centered[1] * F.log_softmax(student_i_local, dim=-1),
-                dim=-1,
+            total_loss += (
+                weights * torch.sum(
+                    -centered[1] * F.log_softmax(student_i_local, dim=-1),
+                    dim=-1,
+                )
             ).mean()
-        total_loss /= 2 * self.num_local_crops + 2
+        total_loss /= (2 * self.num_local_crops + 2)
         # Update center
         self.update_center(teacher_out)
         return total_loss

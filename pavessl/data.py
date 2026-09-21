@@ -177,8 +177,8 @@ class RDD2022(Dataset):
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
             if self.transform is None:
-                return image
-            return self.transform(image)
+                return image, self.sources_weight[source]
+            return self.transform(image, self.sources_weight[source])
         label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
         if self.task == "classification":
             label = self._load_classific_label(label_path, source)
@@ -368,7 +368,7 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     @staticmethod
     def multiview_collate_fn(batch):
-        # `batch` = [([v1, ..., vn], None), ...]
+        # `batch` = [([v1, ..., vn], float), ...]
         B = len(batch)  # batch size
         tensor_dtype = batch[0][0][0].dtype
         # Collating global views
@@ -397,7 +397,12 @@ class SSLMultiviewTransform(torch.nn.Module):
                 dim=0,
                 out=local_views[i * B : (i + 1) * B],
             )
-        return global_views, local_views
+        # Collating sample weights
+        weights = torch.tensor(
+            [sample[1] for sample in batch],
+            dtype=tensor_dtype,
+        )
+        return global_views, local_views, weights
 
 
 class MultiBottomSplit(transforms_v2.Transform):
