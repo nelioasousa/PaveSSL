@@ -148,7 +148,7 @@ def pretrain(args):
         np.zeros(
             (
                 1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                len(args.sources) * len(valid_ks) * len(valid_metrics),
+                1 + len(args.sources) * len(valid_ks) * len(valid_metrics),
             ),
             dtype=np.float32,
         )
@@ -199,7 +199,9 @@ def pretrain(args):
         ]
         # Run validation
         if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
-            valid_history[math.ceil(epoch / args.validation_freq)] = _eval(
+            row_index = math.ceil(epoch / args.validation_freq)
+            valid_history[row_index, 0] = epoch + 1
+            valid_history[row_index, 1:] = _eval(
                 model=teacher,
                 ks=valid_ks,
                 metrics=valid_metrics,
