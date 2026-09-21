@@ -327,7 +327,7 @@ def _eval(model, ks, metrics, args):
     model.eval()
     eval_results = knn_eval(
         model=model.backbone,
-        k=ks,
+        ks=ks,
         distance_temperature=0.07,
         pred_threshold=0.5,
         data_path=args.data,

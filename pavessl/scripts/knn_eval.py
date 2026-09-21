@@ -131,7 +131,7 @@ def _get_feature_similarities_and_labels(
 @torch.inference_mode()
 def knn_eval_one(
     model: torch.nn.Module,
-    k: list[int],
+    ks: list[int],
     temperature: float,
     data_path: Path,
     target_source: str,
@@ -142,7 +142,7 @@ def knn_eval_one(
     num_workers: int,
     threshold: float = 0.3,
 ):
-    max_k = max(k)
+    max_k = max(ks)
     similarities_and_labels = _get_feature_similarities_and_labels(
         model=model,
         data_path=data_path,
@@ -166,13 +166,13 @@ def knn_eval_one(
     similarities.div_(temperature).exp_().unsqueeze_(dim=1)
     closest_labels.mul_(similarities)
     counts = valid_labels.sum(dim=0, keepdim=True)
-    accuracy = np.empty((len(k), valid_labels.shape[-1]), dtype=np.float32)
+    accuracy = np.empty((len(ks), valid_labels.shape[-1]), dtype=np.float32)
     results = {
         "accuracy": accuracy,
         "sensitivity": np.empty_like(accuracy),
         "specificity": np.empty_like(accuracy),
     }
-    for i, k_value in enumerate(k):
+    for i, k_value in enumerate(ks):
         probs = closest_labels[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
         preds = torch.where(probs > threshold, 1.0, 0.0)
@@ -188,7 +188,7 @@ def knn_eval_one(
 
 def knn_eval(
     model: torch.nn.Module,
-    k: list[int],
+    ks: list[int],
     distance_temperature: float,
     pred_threshold: float,
     data_path: Path,
@@ -204,7 +204,7 @@ def knn_eval(
     for source in target_sources:
         source_rsts = knn_eval_one(
             model=model,
-            k=k,
+            ks=ks,
             temperature=distance_temperature,
             data_path=data_path,
             target_source=source,
@@ -236,7 +236,7 @@ def _main(args):
     target_sources = get_rdd2022_sources(args.sources_subset)
     results = knn_eval(
         model=backbone,
-        k=args.num_neighbours,
+        ks=args.num_neighbours,
         distance_temperature=args.temperature,
         pred_threshold=args.threshold,
         data_path=args.data,
