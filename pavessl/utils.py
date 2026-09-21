@@ -63,6 +63,12 @@ def cosine_scheduler(
     return np.concatenate((warmup_schedule, schedule), axis=0)
 
 
+def get_device():
+    return torch.device(
+        torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+    )
+
+
 def save_states(
     *,
     save_file: Path,

@@ -63,29 +63,25 @@ def _get_optimizer(model, args):
     raise ValueError(f'Optimizer "{args.optim}" not supported')
 
 
-def _save_args(args, run_number):
-    with (args.save_dir / f"run{run_number}.args").open("wb") as args_file:
+def _save_args(args):
+    with (args.results_dir / "run.args").open("wb") as args_file:
         pickle.dump(obj=args, file=args_file, protocol=5)
 
 
 def _check_run(args):
-    runs = [
-        int(file.stem[3:]) for file in args.save_dir.glob(r"run[0-9]*.args")
-    ]
-    if not runs:
-        _save_args(args, 1)
-        return args, 1
-    latest = max(runs)
-    with (args.save_dir / f"run{latest}.args").open("rb") as args_file:
-        return pickle.load(args_file), latest
+    try:
+        with (args.results_dir / "run.args").open("rb") as args_file:
+            return pickle.load(args_file)
+    except FileNotFoundError:
+        _save_args(args)
+        return args
 
 
 def pretrain(args):
     utils.set_random_seeds(42)
-    stored_args, run_number = _check_run(args)
-    device = torch.device(
-        torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
-    )
+    args = _check_args(args)
+    stored_args = _check_run(args)
+    device = utils.get_device()
     # Models
     student, teacher = _get_models(device, stored_args)
     # Data
@@ -98,47 +94,52 @@ def pretrain(args):
     valid_ks = [10, 25, 50, 100]
     valid_metrics = ("accuracy", "sensitivity", "specificity")
     # Resume training
-    to_restore = {
+    vars_to_restore = {
         "epoch": 0,
         "loss_history": None,
         "valid_history": None,
     }
     utils.restart_from_checkpoint(
-        ckp_path=(stored_args.save_dir / f"run{run_number}_checkpoint.pth"),
-        run_variables=to_restore,
+        ckp_path=(stored_args.results_dir / "checkpoint.pth"),
+        run_variables=vars_to_restore,
         student=student,
         teacher=teacher,
         loss=loss_fn,
         optimizer=optimizer,
     )
     # Check run state
-    if to_restore["epoch"] == stored_args.epochs:
+    if vars_to_restore["epoch"] == stored_args.epochs:
         if not args.increment:
             print("Training already finished.")
-            print("Use --increment to increment upon previous training run.")
+            print("Use --increment to increment upon this training run.")
             return
-        run_number += 1
+        increment = 1
+        while (args.save_dir / f"{args.save_folder}_i{increment}").is_dir():
+            increment += 1
+        args.save_folder = f"{args.save_folder}_i{increment}"
+        args.results_dir = args.save_dir / args.save_folder
         args.projection_dim = stored_args.projection_dim
         args.dino_base = False
-        _save_args(args, run_number)
+        _save_args(args)
         # Re-build with the new arguments
         train_loader = _get_train_data_loader(args)
         loss_fn = _get_loss_function(device, args)
         optimizer = _get_optimizer(student, args)
         # Unset run variables
-        to_restore["epoch"] = 0
-        to_restore["loss_history"] = None
-        to_restore["valid_history"] = None
+        vars_to_restore["epoch"] = 0
+        vars_to_restore["loss_history"] = None
+        vars_to_restore["valid_history"] = None
     else:
-        if to_restore["epoch"]:
+        if vars_to_restore["epoch"]:
             print("Restoring previous run arguments...")
-            print("Continuing training from epoch", to_restore["epoch"])
+            print("Continuing training from epoch", vars_to_restore["epoch"])
         args = stored_args
+    print(f'Saving results in "{args.results_dir}"')
     # Restore loss and validation histories
     loss_history = (
         np.zeros((args.epochs, 3), dtype=np.float32)
-        if to_restore["loss_history"] is None
-        else to_restore["loss_history"]
+        if vars_to_restore["loss_history"] is None
+        else vars_to_restore["loss_history"]
     )
     valid_history = (
         np.zeros(
@@ -148,8 +149,8 @@ def pretrain(args):
             ),
             dtype=np.float32,
         )
-        if to_restore["valid_history"] is None
-        else to_restore["valid_history"]
+        if vars_to_restore["valid_history"] is None
+        else vars_to_restore["valid_history"]
     )
     # Schedulers
     lr_schedule = utils.cosine_scheduler(
@@ -174,7 +175,7 @@ def pretrain(args):
     )
     # Training
     start_time = time.monotonic()
-    for epoch in range(to_restore["epoch"], args.epochs):
+    for epoch in range(vars_to_restore["epoch"], args.epochs):
         loss_log = _train_one_epoch(
             student=student,
             teacher=teacher,
@@ -212,17 +213,17 @@ def pretrain(args):
             "valid_history": valid_history,
         }
         utils.save_states(
-            save_file=(args.save_dir / f"run{run_number}_checkpoint.pth"),
+            save_file=(args.results_dir / "checkpoint.pth"),
             states_dict=states_dict,
         )
         if not (epoch % args.checkpoint_freq):
             ckpt_file = (
-                args.save_dir / f"run{run_number}_checkpoint_{epoch:04d}.pth"
+                args.results_dir / "checkpoint_{epoch:04d}.pth"
             )
             utils.save_states(save_file=ckpt_file, states_dict=states_dict)
     # Save histories and report run duration
     np.savetxt(
-        fname=(args.save_dir / f"run{run_number}_loss_history.csv"),
+        fname=(args.results_dir / "loss_history.csv"),
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
@@ -230,7 +231,7 @@ def pretrain(args):
         comments="",
     )
     np.savetxt(
-        fname=(args.save_dir / f"run{run_number}_valid_history.csv"),
+        fname=(args.results_dir / "valid_history.csv"),
         X=valid_history,
         delimiter=",",
         fmt="%.4f",
@@ -350,8 +351,8 @@ def _eval(model, ks, metrics, args):
 
 
 def _check_args(args):
-    args.save_dir = args.save_dir / args.save_folder
-    args.save_dir.mkdir(exist_ok=True, parents=True)
+    args.results_dir = args.save_dir / args.save_folder
+    args.results_dir.mkdir(exist_ok=True, parents=True)
     args.sources = get_rdd2022_sources(args.sources_subset)
     args.epochs = max(1, args.epochs)
     args.batch_size = max(args.batch_size, len(args.sources))
@@ -471,7 +472,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        pretrain(_check_args(args))
+        pretrain(args)
         return 0
     except Exception:
         import traceback
