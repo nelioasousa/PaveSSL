@@ -235,17 +235,21 @@ def pretrain(args):
         header="min,max,avg",
         comments="",
     )
-    np.savetxt(
-        fname=(args.results_dir / "valid_history.csv"),
-        X=valid_history,
-        delimiter=",",
-        fmt="%.4f",
-        header=",".join(
+    valid_headers = ["epoch"]
+    valid_headers.extend(
+        [
             f"{source}_{k}_{metric}"
             for source in args.sources
             for k in valid_ks
             for metric in valid_metrics
-        ),
+        ]
+    )
+    np.savetxt(
+        fname=(args.results_dir / "valid_history.csv"),
+        X=valid_history,
+        delimiter=",",
+        fmt=(["%04d"] + ["%.4f"] * (len(valid_headers) - 1)),
+        header=(",".join(valid_headers)),
         comments="",
     )
     train_duration = int(time.monotonic() - start_time)
