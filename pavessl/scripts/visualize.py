@@ -13,10 +13,10 @@ def plot_loss_history(
     save_file: Path,
 ):
     loss_df = pd.read_csv(loss_history_csv, header=0)
-    loss_df["epochs"] = np.arange(1, len(loss_df) + 1)
+    loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.fill_between(
-        x="epochs",
+        x="epoch",
         y1="min",
         y2="max",
         color="tab:blue",
@@ -24,7 +24,7 @@ def plot_loss_history(
         alpha=0.4,
         label="min-max",
     )
-    ax.plot("epochs", "avg", data=loss_df, color="red", label="avg")
+    ax.plot("epoch", "avg", data=loss_df, color="red", label="avg")
     ax.set_xlabel("Epochs")
     ax.set_ylabel(f"{metric_name} ({metric_unit})")
     ax.legend()
@@ -35,12 +35,11 @@ def plot_loss_history(
 def plot_valid_history(valid_history_csv: Path, save_file: Path):
     valid_df = pd.read_csv(valid_history_csv, header=0)
     sources, ks, metrics = set(), set(), set()
-    for col in valid_df.columns:
+    for col in (c for c in valid_df.columns if c != "epoch"):
         parts = col.split("_")
         metrics.add(parts[-1])
         ks.add(int(parts[-2]))
         sources.add("_".join(parts[:-2]))
-    valid_df["epochs"] = np.arange(1, len(valid_df) + 1)
     fig, axs = plt.subplots(
         len(metrics),
         len(ks),
@@ -54,7 +53,7 @@ def plot_valid_history(valid_history_csv: Path, save_file: Path):
             ax = axs[i, j]
             for source in sources:
                 ax.plot(
-                    "epochs",
+                    "epoch",
                     f"{source}_{k}_{metric}",
                     data=valid_df,
                     label=source,
@@ -93,7 +92,7 @@ def get_args_parser():
         "--ssl-exps",
         type=str,
         nargs="+",
-        default=["test_10epochs"],
+        required=True,
     )
     return parser
 
