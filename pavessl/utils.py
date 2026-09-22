@@ -10,6 +10,8 @@ from typing import Any
 import numpy as np
 import torch
 
+from pavessl.data import get_rdd2022_sources
+
 
 def set_random_seeds(seed: int = 42):
     """Set random seeds."""
@@ -300,3 +302,27 @@ def get_base_args_parser():
     parser.add_argument("--checkpoint-freq", type=int, default=10)
     parser.add_argument("--num-workers", type=int, default=6)
     return parser
+
+
+def check_args(args: argparse.Namespace):
+    args.results_dir = args.save_dir / args.save_folder
+    args.results_dir.mkdir(exist_ok=True, parents=True)
+    args.sources = get_rdd2022_sources(args.sources_subset)
+    args.epochs = max(1, args.epochs)
+    args.batch_size = max(args.batch_size, len(args.sources))
+    args.checkpoint_freq = (
+        args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
+    )
+    if args.disable_schedules:
+        args.lr_end = args.lr
+        args.weight_decay_end = args.weight_decay
+    if args.disable_warmups:
+        args.lr_warmup_size = 0
+        args.teacher_temp_warmup_size = 0
+    else:
+        args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
+        args.teacher_temp_warmup_size = max(
+            0,
+            min(args.teacher_temp_warmup_size, args.epochs),
+        )
+    return args

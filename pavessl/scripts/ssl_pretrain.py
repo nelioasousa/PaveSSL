@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
-from pavessl.data import RDD2022, SSLMultiviewTransform, get_rdd2022_sources
+from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.knn_eval import knn_eval
 
 
@@ -358,31 +358,12 @@ def _eval(model, ks, metrics, args):
 
 
 def _check_args(args):
-    args.results_dir = args.save_dir / args.save_folder
-    args.results_dir.mkdir(exist_ok=True, parents=True)
-    args.sources = get_rdd2022_sources(args.sources_subset)
-    args.epochs = max(1, args.epochs)
-    args.batch_size = max(args.batch_size, len(args.sources))
-    if args.disable_schedules:
-        args.lr_end = args.lr
-        args.weight_decay_end = args.weight_decay
-    if args.disable_warmups:
-        args.lr_warmup_size = 0
-        args.teacher_temp_warmup_size = 0
-    else:
-        args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
-        args.teacher_temp_warmup_size = max(
-            0,
-            min(args.teacher_temp_warmup_size, args.epochs),
-        )
+    args = utils.check_args(args)
     args.freeze_last_layer_for = max(
         0,
         min(args.freeze_last_layer_for, args.epochs),
     )
     args.num_local_views = max(args.num_local_views, 1)
-    args.checkpoint_freq = (
-        args.checkpoint_freq if args.checkpoint_freq > 0 else args.epochs
-    )
     return args
 
 
