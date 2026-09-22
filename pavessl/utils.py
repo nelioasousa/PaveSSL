@@ -294,6 +294,27 @@ def get_base_args_parser():
     return parser
 
 
+def add_knn_eval_args(parser: argparse.ArgumentParser):
+    parser.add_argument("--eval-num-crops", type=int, default=3)
+    parser.add_argument("--eval-crop-size", type=int, default=448)
+    parser.add_argument("--eval-dist-temperature", type=float, default=0.07)
+    parser.add_argument("--eval-pred-threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--eval-ks",
+        type=int,
+        nargs="+",
+        default=[10, 25, 50, 100],
+    )
+    parser.add_argument(
+        "--eval-metrics",
+        type=str,
+        nargs="+",
+        choices=["accuracy", "sensitivity", "specificity"],
+        default=["accuracy", "sensitivity", "specificity"],
+    )
+    return parser
+
+
 def check_args(args: argparse.Namespace):
     args.results_dir = args.save_dir / args.save_folder
     args.results_dir.mkdir(exist_ok=True, parents=True)

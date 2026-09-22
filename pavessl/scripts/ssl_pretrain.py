@@ -89,9 +89,6 @@ def pretrain(args):
     loss_fn = _get_loss_function(device, stored_args)
     # Optimizer
     optimizer = _get_optimizer(student, stored_args)
-    # k-NN validation
-    valid_ks = [10, 25, 50, 100]
-    valid_metrics = ("accuracy", "sensitivity", "specificity")
     # Resume training
     vars_to_restore = {
         "epoch": 0,
@@ -148,7 +145,7 @@ def pretrain(args):
         np.zeros(
             (
                 1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                1 + len(args.sources) * len(valid_ks) * len(valid_metrics),
+                1 + len(args.sources) * len(args.eval_ks) * len(args.eval_metrics),
             ),
             dtype=np.float32,
         )
@@ -203,8 +200,6 @@ def pretrain(args):
             valid_history[row_index, 0] = epoch + 1
             valid_history[row_index, 1:] = _eval(
                 model=teacher,
-                ks=valid_ks,
-                metrics=valid_metrics,
                 args=args,
             )
         # Save checkpoints
@@ -240,8 +235,8 @@ def pretrain(args):
         [
             f"{source}_{k}_{metric}"
             for source in args.sources
-            for k in valid_ks
-            for metric in valid_metrics
+            for k in args.eval_ks
+            for metric in args.eval_metrics
         ]
     )
     np.savetxt(
@@ -333,18 +328,18 @@ def _train_one_epoch(
     return metric_logger.meters["loss"]
 
 
-def _eval(model, ks, metrics, args):
+def _eval(model, args):
     model.eval()
     eval_results = knn_eval(
         model=model.backbone,
-        ks=ks,
-        distance_temperature=0.07,
-        pred_threshold=0.5,
+        ks=args.eval_ks,
+        distance_temperature=args.eval_dist_temperature,
+        pred_threshold=args.eval_pred_threshold,
         data_path=args.data,
         target_sources=args.sources,
-        crop_size=args.global_size,
-        num_crops=3,
-        crops_overlap=0.3,
+        crop_size=args.eval_crop_size,
+        num_crops=args.eval_num_crops,
+        crops_overlap=0.3,  # TODO: remove `MultiBottomSplit`
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         simplified=True,
@@ -353,8 +348,8 @@ def _eval(model, ks, metrics, args):
         [
             eval_results[source][metric][i]
             for source in args.sources
-            for i in range(len(ks))
-            for metric in metrics
+            for i in range(len(args.eval_ks))
+            for metric in args.eval_metrics
         ]
     )
 
@@ -367,6 +362,26 @@ def _check_args(args):
     )
     args.num_local_views = max(args.num_local_views, 1)
     return args
+
+
+def add_multiview_args(parser: argparse.ArgumentParser):
+    # Multi-view configuration
+    parser.add_argument("--global-size", type=int, default=448)
+    parser.add_argument(
+        "--global-scale",
+        type=float,
+        nargs=2,
+        default=(0.6, 0.85),
+    )
+    parser.add_argument("--local-size", type=int, default=224)
+    parser.add_argument(
+        "--local-scale",
+        type=float,
+        nargs=2,
+        default=(0.125, 0.4),
+    )
+    parser.add_argument("--num-local-views", type=int, default=2)
+    return parser
 
 
 def get_args_parser():
@@ -390,22 +405,8 @@ def get_args_parser():
     parser.add_argument("--teacher-temp", type=float, default=0.04)
     parser.add_argument("--teacher-temp-warmup-size", type=int, default=3)
     parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
-    # Multi-view configuration
-    parser.add_argument("--global-size", type=int, default=448)
-    parser.add_argument(
-        "--global-scale",
-        type=float,
-        nargs=2,
-        default=(0.6, 0.85),
-    )
-    parser.add_argument("--local-size", type=int, default=224)
-    parser.add_argument(
-        "--local-scale",
-        type=float,
-        nargs=2,
-        default=(0.125, 0.4),
-    )
-    parser.add_argument("--num-local-views", type=int, default=2)
+    parser = add_multiview_args(parser)
+    parser = utils.add_knn_eval_args(parser)
     return parser
 
 
