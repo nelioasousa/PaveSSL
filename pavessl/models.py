@@ -69,9 +69,9 @@ class ProjectionHead(nn.Module):
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
         self.apply(_init_linear)
-        self.last_layer = nn.utils.parametrizations.weight_norm(
-            nn.Linear(bottleneck_dim, out_dim, bias=False)
-        )
+        last_layer = nn.Linear(bottleneck_dim, out_dim, bias=False)
+        _init_linear(last_layer)
+        self.last_layer = nn.utils.parametrizations.weight_norm(last_layer)
         mag_weights = self.last_layer.parametrizations.weight.original0
         nn.init.constant_(mag_weights, 1.0)
         if norm_last_layer:
