@@ -11,8 +11,6 @@ from torch.utils.data import Dataset, Sampler
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import Transform, query_size
 
-from pavessl.utils import load_bboxes
-
 
 def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
     subset_level = min(max(subset_level, 1), 3)
@@ -25,6 +23,16 @@ def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
         "United_States",
     ]
     return sources[: (2 * subset_level)]
+
+
+def load_bboxes(annotation_path: str | Path):
+    bboxes = {"boxes": [], "labels": []}
+    with open(annotation_path, mode="r") as ann_file:
+        for line in ann_file.read().strip().splitlines():
+            label, *box = line.split()
+            bboxes["boxes"].append([int(coord) for coord in box])
+            bboxes["labels"].append(int(label))
+    return bboxes
 
 
 class RDD2022(Dataset):

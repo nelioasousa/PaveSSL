@@ -20,16 +20,6 @@ def set_random_seeds(seed: int = 42):
     np.random.seed(seed)
 
 
-def load_bboxes(annotation_path: str | Path):
-    bboxes = {"boxes": [], "labels": []}
-    with open(annotation_path, mode="r") as ann_file:
-        for line in ann_file.read().strip().splitlines():
-            label, *box = line.split()
-            bboxes["boxes"].append([int(coord) for coord in box])
-            bboxes["labels"].append(int(label))
-    return bboxes
-
-
 def get_params_groups(model: torch.nn.Module):
     regularize = []
     dont_regularize = []
