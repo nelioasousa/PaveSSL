@@ -74,6 +74,7 @@ class ProjectionHead(nn.Module):
         self.last_layer = nn.utils.parametrizations.weight_norm(last_layer)
         mag_weights = self.last_layer.parametrizations.weight.original0
         nn.init.constant_(mag_weights, 1.0)
+        self.norm_last_layer = norm_last_layer
         if norm_last_layer:
             mag_weights.requires_grad = False
 
@@ -82,6 +83,14 @@ class ProjectionHead(nn.Module):
         x = nn.functional.normalize(x, dim=-1, p=2)
         x = self.last_layer(x)
         return x
+
+    def freeze_last_layer(self, freeze: bool):
+        if freeze:
+            self.last_layer.parametrizations.weight.original0.requires_grad = False
+            self.last_layer.parametrizations.weight.original1.requires_grad = False
+        else:
+            self.last_layer.parametrizations.weight.original0.requires_grad = not self.norm_last_layer
+            self.last_layer.parametrizations.weight.original1.requires_grad = True
 
 
 class SingleHeadProjectionNetwork(nn.Module):

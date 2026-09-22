@@ -271,6 +271,8 @@ def _train_one_epoch(
 ):
     student.train()
     teacher.train()  # Necessary for BatchNorm updates
+    student.local_head.freeze_last_layer(epoch < args.freeze_last_layer_for)
+    student.global_head.freeze_last_layer(epoch < args.freeze_last_layer_for)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter(
         "loss",
@@ -309,10 +311,6 @@ def _train_one_epoch(
         # Student update
         optimizer.zero_grad()
         loss.backward()
-        if epoch < args.freeze_last_layer_for:
-            # Freeze last layer of the projection head in this iteration
-            student.global_head.last_layer.zero_grad(set_to_none=True)
-            student.local_head.last_layer.zero_grad(set_to_none=True)
         optimizer.step()
         # EMA teacher update
         with torch.no_grad():
