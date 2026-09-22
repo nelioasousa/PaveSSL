@@ -396,7 +396,7 @@ def get_args_parser():
     )
     # Architecture
     parser.add_argument("--dino-base", action="store_true")
-    parser.add_argument("--projection-dim", type=int, default=16384)
+    parser.add_argument("--projection-dim", type=int, default=8192)
     # Momentum coefficients
     parser.add_argument("--teacher-momentum", type=float, default=0.996)
     parser.add_argument("--center-momentum", type=float, default=0.9)
