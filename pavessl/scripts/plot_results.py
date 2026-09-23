@@ -5,14 +5,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from pavessl.utils import load_exp_arguments
+
 
 def plot_loss_history(
-    loss_history_csv: Path,
+    experiment_dir: Path,
     metric_name: str,
     metric_unit: str,
     save_file: Path,
 ):
-    loss_df = pd.read_csv(loss_history_csv, header=0)
+    try:
+        loss_df = pd.read_csv(experiment_dir / "loss_history.csv", header=0)
+    except FileNotFoundError:
+        from torch import load
+
+        ckpt = load(
+            f=(experiment_dir / "checkpoint.pth"),
+            map_location="cpu",
+            weights_only=False,
+        )
+        loss_df = pd.DataFrame(
+            data=ckpt["loss_history"][:ckpt["epoch"]],
+            columns=["min", "max", "avg"],
+        )
     loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.fill_between(
@@ -25,33 +40,53 @@ def plot_loss_history(
         label="min-max",
     )
     ax.plot("epoch", "avg", data=loss_df, color="red", label="avg")
-    ax.set_xlabel("Epochs")
+    ax.set_xlabel("Epoch")
     ax.set_ylabel(f"{metric_name} ({metric_unit})")
     ax.legend()
+    ax.grid(axis="y", alpha=0.7, linestyle="--")
     fig.savefig(save_file, dpi=300, bbox_inches="tight")
     return fig, ax
 
 
-def plot_valid_history(valid_history_csv: Path, save_file: Path):
-    valid_df = pd.read_csv(valid_history_csv, header=0)
-    sources, ks, metrics = set(), set(), set()
-    for col in (c for c in valid_df.columns if c != "epoch"):
-        parts = col.split("_")
-        metrics.add(parts[-1])
-        ks.add(int(parts[-2]))
-        sources.add("_".join(parts[:-2]))
+def plot_valid_history(
+    experiment_dir: Path,
+    save_file: Path,
+):
+    exp_args = load_exp_arguments(experiment_dir)
+    try:
+        valid_df = pd.read_csv(experiment_dir / "valid_history.csv", header=0)
+    except FileNotFoundError:
+        from torch import load
+
+        ckpt = load(
+            f=(experiment_dir / "checkpoint.pth"),
+            map_location="cpu",
+            weights_only=False,
+        )
+        index = 1 + ckpt["epoch"] // exp_args.validation_freq
+        valid_df = pd.DataFrame(
+            data=ckpt["valid_history"][:index],
+            columns=[
+                "epoch",
+                *(
+                    f"{source}_{k}_{metric}"
+                    for source in exp_args.sources
+                    for k in exp_args.eval_ks
+                    for metric in exp_args.eval_metrics
+                )
+            ],
+        )
     fig, axs = plt.subplots(
-        len(metrics),
-        len(ks),
-        figsize=(len(ks) * 5, len(metrics) * 3),
+        len(exp_args.eval_metrics),
+        len(exp_args.eval_ks),
+        figsize=(len(exp_args.eval_ks) * 5, len(exp_args.eval_metrics) * 3),
         sharex=True,
         sharey="row",
     )
-    sources = sorted(sources)
-    for i, metric in enumerate(sorted(metrics)):
-        for j, k in enumerate(sorted(ks)):
+    for i, metric in enumerate(exp_args.eval_metrics):
+        for j, k in enumerate(exp_args.eval_ks):
             ax = axs[i, j]
-            for source in sources:
+            for source in exp_args.sources:
                 ax.plot(
                     "epoch",
                     f"{source}_{k}_{metric}",
@@ -61,12 +96,12 @@ def plot_valid_history(valid_history_csv: Path, save_file: Path):
             ax.grid(axis="y", alpha=0.7, linestyle="--")
             if not i:
                 ax.set_title(f"K = {k}")
-            if i == len(metrics) - 1:
+            if i == len(exp_args.eval_metrics) - 1:
                 ax.set_xlabel("Epoch")
             if not j:
                 ax.set_ylabel(f"{metric.upper()} (%)")
                 ax.legend()
-            if j == len(ks) - 1:
+            if j == len(exp_args.eval_ks) - 1:
                 ax.tick_params(
                     axis="y",
                     left=False,
@@ -105,13 +140,13 @@ def main(args):
         plots_dir = exp_dir / "plots"
         plots_dir.mkdir(exist_ok=True)
         _ = plot_loss_history(
-            loss_history_csv=(exp_dir / "loss_history.csv"),
+            experiment_dir=exp_dir,
             metric_name="Cross Entropy",
             metric_unit="nats",
             save_file=(plots_dir / "loss_history.png"),
         )
         _ = plot_valid_history(
-            valid_history_csv=(exp_dir / "valid_history.csv"),
+            experiment_dir=exp_dir,
             save_file=(plots_dir / "valid_history.png"),
         )
 

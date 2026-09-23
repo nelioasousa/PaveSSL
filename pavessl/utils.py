@@ -1,5 +1,6 @@
 import argparse
 import os
+import pickle
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterable
@@ -337,3 +338,8 @@ def check_args(args: argparse.Namespace):
             min(args.teacher_temp_warmup_size, args.epochs),
         )
     return args
+
+
+def load_exp_arguments(experiment_path: str | Path):
+    with (Path(experiment_path) / "run.args").open("rb") as args_file:
+        return pickle.load(args_file)
