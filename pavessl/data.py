@@ -241,8 +241,8 @@ class BalancedSampler(Sampler[list[tuple[str, int]]]):
 
     def __iter__(self):
         self._batch = 0
-        for source in self._sources_count:
-            np.random.shuffle(self._indexes[source])
+        for indexes in self._indexes.values():
+            np.random.shuffle(indexes)
         return self
 
     def __next__(self):
