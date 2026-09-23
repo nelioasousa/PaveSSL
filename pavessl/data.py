@@ -260,18 +260,18 @@ class BalancedSampler(Sampler[list[tuple[str, int]]]):
 
 
 class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
-    _bottom_threshold = 0.5
+    _bottom_threshold = 0.6
 
     def make_params(self, flat_inputs):
         h, _ = query_size(flat_inputs)
-        thres = round(h * self._bottom_threshold)
         params = super().make_params(flat_inputs)
-        if params["top"] >= thres:
+        thres = max(0, int(h * self._bottom_threshold - params["height"] / 2))
+        if params["top"] > thres:
             return params
         limit = h - params["height"]
         params["top"] = (
             torch.randint(thres, limit, size=(1,)).item()
-            if params["height"] < (h - thres)
+            if limit > thres
             else limit
         )
         return params
