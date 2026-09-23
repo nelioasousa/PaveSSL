@@ -309,10 +309,10 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     @staticmethod
     def get_multiview_augmentations(
-        global_size: int = 224,
-        global_scale: tuple[float, float] = (0.75, 1.0),
-        local_size: int = 96,
-        local_scale: tuple[float, float] = (0.05, 0.4),
+        global_size: int,
+        global_scale: tuple[float, float],
+        local_size: int,
+        local_scale: tuple[float, float],
     ):
         # Cropping
         local_crop = BottomRandomResizedCrop(local_size, local_scale)
@@ -320,11 +320,11 @@ class SSLMultiviewTransform(torch.nn.Module):
         # Geometric transformations
         rotation = transforms_v2.RandomApply(
             [transforms_v2.RandomRotation(degrees=10, expand=False)],
-            p=0.3,
+            p=0.4,
         )
         hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
         # Photometric transformations
-        solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.3)
+        solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.35)
         photometric_transforms = [
             transforms_v2.RandomApply(
                 [
@@ -335,14 +335,14 @@ class SSLMultiviewTransform(torch.nn.Module):
                         hue=0.1,
                     )
                 ],
-                p=0.8,
+                p=0.85,
             ),
-            transforms_v2.RandomPosterize(bits=6, p=0.3),
+            transforms_v2.RandomPosterize(bits=6, p=0.35),
             transforms_v2.RandomApply(
-                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.3, 1.2))],
-                p=0.6,
+                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.2))],
+                p=0.75,
             ),
-            transforms_v2.RandomGrayscale(p=0.2),
+            transforms_v2.RandomGrayscale(p=0.25),
         ]
         # Global
         stronger_global_aug = transforms_v2.Compose(
