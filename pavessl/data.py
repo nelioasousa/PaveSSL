@@ -290,20 +290,20 @@ class SSLMultiviewTransform(torch.nn.Module):
         self.global_size = global_size
         self.local_size = local_size
         self.num_local_views = num_local_views
-        augs = self.get_multiview_augmentations(
+        augmentations = self.get_multiview_augmentations(
             global_size,
             global_scale,
             local_size,
             local_scale,
         )
-        self.teacher_global = augs[0]
-        self.student_global = augs[1]
-        self.student_local = augs[2]
+        self.global1_aug = augmentations[0]
+        self.global2_aug = augmentations[1]
+        self.local_aug = augmentations[2]
 
     def forward(self, img, label=None):
-        views = [self.teacher_global(img), self.student_global(img)]
+        views = [self.global1_aug(img), self.global2_aug(img)]
         views.extend(
-            [self.student_local(img) for _ in range(self.num_local_views)]
+            [self.local_aug(img) for _ in range(self.num_local_views)]
         )
         return views, label
 
@@ -314,19 +314,18 @@ class SSLMultiviewTransform(torch.nn.Module):
         local_size: int = 96,
         local_scale: tuple[float, float] = (0.05, 0.4),
     ):
-        # Random cropping
-        global_crop = BottomRandomResizedCrop(global_size, global_scale)
+        # Cropping
         local_crop = BottomRandomResizedCrop(local_size, local_scale)
+        global_crop = BottomRandomResizedCrop(global_size, global_scale)
         # Geometric transformations
-        geometric_transfs = [
-            transforms_v2.RandomHorizontalFlip(p=0.5),
-            transforms_v2.RandomApply(
-                [transforms_v2.RandomRotation(degrees=10, expand=False)],
-                p=0.3,
-            ),
-        ]
+        rotation = transforms_v2.RandomApply(
+            [transforms_v2.RandomRotation(degrees=10, expand=False)],
+            p=0.3,
+        )
+        hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
         # Photometric transformations
-        photometric_transfs = [
+        solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.3)
+        photometric_transforms = [
             transforms_v2.RandomApply(
                 [
                     transforms_v2.ColorJitter(
@@ -339,40 +338,40 @@ class SSLMultiviewTransform(torch.nn.Module):
                 p=0.8,
             ),
             transforms_v2.RandomPosterize(bits=6, p=0.3),
-            transforms_v2.RandomSolarize(threshold=0.65, p=0.3),
             transforms_v2.RandomApply(
-                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.5, 1.2))],
-                p=0.8,
+                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.3, 1.2))],
+                p=0.6,
             ),
             transforms_v2.RandomGrayscale(p=0.2),
         ]
-        # Student
-        ## Global
-        student_global_aug = transforms_v2.Compose(
+        # Global
+        stronger_global_aug = transforms_v2.Compose(
             [
+                rotation,
                 global_crop,
-                *geometric_transfs,
-                *photometric_transfs,
+                hflip,
+                solarize,
+                *photometric_transforms,
             ]
         )
-        ## Local
-        student_local_aug = transforms_v2.Compose(
+        weaker_global_aug = transforms_v2.Compose(
             [
+                rotation,
+                global_crop,
+                hflip,
+                *photometric_transforms,
+            ]
+        )
+        # Local
+        local_aug = transforms_v2.Compose(
+            [
+                rotation,
                 local_crop,
-                *geometric_transfs,
-                *photometric_transfs,
+                hflip,
+                *photometric_transforms,
             ]
         )
-        # Teacher
-        teacher_aug = transforms_v2.Compose(
-            [
-                global_crop,
-                *geometric_transfs,
-                photometric_transfs[0],
-                *photometric_transfs[-2:],
-            ]
-        )
-        return teacher_aug, student_global_aug, student_local_aug
+        return weaker_global_aug, stronger_global_aug, local_aug
 
     @staticmethod
     def multiview_collate_fn(batch):
