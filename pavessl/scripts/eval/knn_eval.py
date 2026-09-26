@@ -281,7 +281,7 @@ def get_args_parser():
         default=3,
     )
     # Others
-    parser.add_argument("--use-cuda", type=bool, action="store_true")
+    parser.add_argument("--use-cuda", action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=4)
     return parser
