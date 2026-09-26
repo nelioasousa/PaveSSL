@@ -119,6 +119,11 @@ def get_args_parser():
         description="Generate visualizations for the diverse results."
     )
     parser.add_argument(
+        "--save-folder",
+        type=str,
+        default="plots",
+    )
+    parser.add_argument(
         "--ssl-pretrain-dir",
         type=Path,
         default=Path("data/results/ssl_pretrain"),
@@ -137,7 +142,7 @@ def main(args):
     ssl_dir = args.ssl_pretrain_dir
     for ssl_exp in args.ssl_exps:
         exp_dir = ssl_dir / ssl_exp
-        plots_dir = exp_dir / "plots"
+        plots_dir = exp_dir / args.save_folder
         plots_dir.mkdir(exist_ok=True)
         _ = plot_loss_history(
             experiment_dir=exp_dir,
