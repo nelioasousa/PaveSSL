@@ -8,7 +8,7 @@ import torchvision
 from torch.utils.data import DataLoader
 
 from pavessl.data import RDD2022, MultiBottomSplit, get_rdd2022_sources
-from pavessl.utils import MetricLogger
+from pavessl.utils import MetricLogger, add_knn_eval_args
 
 
 def load_resnet50_backbone(state_file: Path, checkpoint_key: str | None = None):
@@ -236,12 +236,12 @@ def _main(args):
     target_sources = get_rdd2022_sources(args.sources_subset)
     results = knn_eval(
         model=backbone,
-        ks=args.num_neighbours,
-        distance_temperature=args.temperature,
-        pred_threshold=args.threshold,
+        ks=args.ks,
+        distance_temperature=args.dist_temperature,
+        pred_threshold=args.pred_threshold,
         data_path=args.data,
         target_sources=target_sources,
-        crop_size=args.crop_size,
+        crop_size=args.crops_resize,
         num_crops=args.num_crops,
         crops_overlap=args.crops_overlap,
         batch_size=args.batch_size,
@@ -258,19 +258,6 @@ def get_args_parser():
     # Backbone location
     parser.add_argument("-bk", "--backbone", type=Path, required=True)
     parser.add_argument("-ck", "--checkpoint-key", type=str, default=None)
-    # k-NN specific
-    parser.add_argument(
-        "-k",
-        "--num-neighbours",
-        type=int,
-        nargs="+",
-        default=[10, 25, 100],
-    )
-    parser.add_argument("-t", "--temperature", type=float, default=0.07)
-    parser.add_argument("--crop-size", type=int, default=224)
-    parser.add_argument("--num-crops", type=int, default=3)
-    parser.add_argument("--crops-overlap", type=float, default=(1 / 3))
-    parser.add_argument("--threshold", type=float, default=0.5)
     # Data and save locations
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
     parser.add_argument("--save-file", type=Path, required=True)
@@ -280,6 +267,8 @@ def get_args_parser():
         type=int,
         default=3,
     )
+    # k-NN specific
+    parser = add_knn_eval_args(parser)
     # Others
     parser.add_argument("--use-cuda", action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)

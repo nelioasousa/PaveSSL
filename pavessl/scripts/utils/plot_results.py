@@ -116,23 +116,28 @@ def _plot_valid_history(
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
-        description="Generate visualizations for the diverse results."
+        description=(
+            "Generate results visualizations (plots) for the experiments."
+        ),
     )
     parser.add_argument(
         "--save-folder",
         type=str,
         default="plots",
+        help="Folder name in which to save the plots.",
     )
     parser.add_argument(
         "--ssl-pretrain-dir",
         type=Path,
         default=Path("data/results/ssl_pretrain"),
+        help="Directory in which the SSL pre-training experiments are stored.",
     )
     parser.add_argument(
         "--ssl-exps",
         type=str,
         nargs="+",
         required=True,
+        help="Which experiments to generate plots to.",
     )
     return parser
 

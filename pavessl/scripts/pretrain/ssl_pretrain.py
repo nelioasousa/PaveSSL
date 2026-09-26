@@ -341,9 +341,9 @@ def _eval(model, args):
         pred_threshold=args.eval_pred_threshold,
         data_path=args.data,
         target_sources=args.sources,
-        crop_size=args.eval_crop_size,
+        crop_size=args.eval_crops_resize,
         num_crops=args.eval_num_crops,
-        crops_overlap=0.3,  # TODO: remove `MultiBottomSplit`
+        crops_overlap=args.eval_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         simplified=True,
@@ -370,21 +370,38 @@ def _check_args(args):
 
 def add_multiview_args(parser: argparse.ArgumentParser):
     # Multi-view configuration
-    parser.add_argument("--global-size", type=int, default=448)
+    parser.add_argument(
+        "--global-size",
+        type=int,
+        default=448,
+        help="Resize global crops to this dimension.",
+    )
     parser.add_argument(
         "--global-scale",
         type=float,
         nargs=2,
         default=(0.6, 0.85),
+        help="Min-max range of image area for global crops.",
     )
-    parser.add_argument("--local-size", type=int, default=224)
+    parser.add_argument(
+        "--local-size",
+        type=int,
+        default=224,
+        help="Resize local crops to this dimension.",
+    )
     parser.add_argument(
         "--local-scale",
         type=float,
         nargs=2,
         default=(0.125, 0.4),
+        help="Min-max range of image area for local crops.",
     )
-    parser.add_argument("--num-local-views", type=int, default=2)
+    parser.add_argument(
+        "--num-local-views",
+        type=int,
+        default=2,
+        help="Generate N >= 1 local views for each image.",
+    )
     return parser
 
 
@@ -397,20 +414,64 @@ def get_args_parser():
         parents=[utils.get_base_args_parser()],
     )
     # Architecture
-    parser.add_argument("--dino-base", action="store_true")
-    parser.add_argument("--projection-dim", type=int, default=8192)
+    parser.add_argument(
+        "--dino-base",
+        action="store_true",
+        help="Used DINOv1 ImageNet-1K pre-trained backbone as start point.",
+    )
+    parser.add_argument(
+        "--projection-dim",
+        type=int,
+        default=8192,
+        help="Output dimension of the feature projection heads.",
+    )
     # Momentum coefficients
-    parser.add_argument("--teacher-momentum", type=float, default=0.996)
-    parser.add_argument("--center-momentum", type=float, default=0.9)
+    parser.add_argument(
+        "--teacher-momentum",
+        type=float,
+        default=0.996,
+        help="EMA update constant for teacher network.",
+    )
+    parser.add_argument(
+        "--center-momentum",
+        type=float,
+        default=0.9,
+        help="EMA update constant for the teacher output center.",
+    )
     # Training stability
-    parser.add_argument("--freeze-last-layer-for", type=int, default=3)
+    parser.add_argument(
+        "--freeze-last-layer-for",
+        type=int,
+        default=3,
+        help="Freeze last layer of student projection heads for N epochs.",
+    )
     # Sharpness temperature
-    parser.add_argument("--student-temp", type=float, default=0.1)
-    parser.add_argument("--teacher-temp", type=float, default=0.04)
-    parser.add_argument("--teacher-temp-warmup-size", type=int, default=3)
-    parser.add_argument("--teacher-temp-warmup-start", type=float, default=0.02)
+    parser.add_argument(
+        "--student-temp",
+        type=float,
+        default=0.1,
+        help="Student softmax sharpening constant.",
+    )
+    parser.add_argument(
+        "--teacher-temp",
+        type=float,
+        default=0.04,
+        help="Teacher softmax sharpening constant.",
+    )
+    parser.add_argument(
+        "--teacher-temp-warmup-size",
+        type=int,
+        default=3,
+        help="Warmup duration for the teacher softmax sharpening constant.",
+    )
+    parser.add_argument(
+        "--teacher-temp-warmup-start",
+        type=float,
+        default=0.02,
+        help="Start value for the teacher softmax sharpening constant warmup.",
+    )
     parser = add_multiview_args(parser)
-    parser = utils.add_knn_eval_args(parser)
+    parser = utils.add_knn_eval_args(parser, prefix="eval-")
     return parser
 
 

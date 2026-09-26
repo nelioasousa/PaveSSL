@@ -21,7 +21,7 @@ def _main(args):
     bottomsplit = MultiBottomSplit(
         size=args.crop_size,
         num_crops=args.num_crops,
-        overlap=0.3,  # TODO: remove `MultiBottomSplit`
+        overlap=args.crops_overlap,
     )
     for processed, img_path in enumerate(args.images.glob("*.jpg")):
         if processed >= args.max_images:
@@ -48,15 +48,48 @@ def _main(args):
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--images", type=Path, required=True)
-    parser.add_argument("--save-dir", type=Path, required=True)
-    parser.add_argument("--max-images", type=int, default=20)
+    parser = argparse.ArgumentParser(
+        description="Apply augmentations to images for visualization purposes."
+    )
+    parser.add_argument(
+        "--images",
+        type=Path,
+        required=True,
+        help="Dictory containing images to be augmentated.",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        required=True,
+        help="Directory path in which to save the augmentations."
+    )
+    parser.add_argument(
+        "--max-images",
+        type=int,
+        default=20,
+        help="Limit the number of images to be augmented.",
+    )
     # Multi-view
     parser = add_multiview_args(parser)
     # k-NN eval
-    parser.add_argument("--num-crops", type=int, default=3)
-    parser.add_argument("--crop-size", type=int, default=448)
+    parser.add_argument(
+        "--num-crops",
+        type=int,
+        default=3,
+        help="Split images in N >= 2 crops for kNN evaluation."
+    )
+    parser.add_argument(
+        "--crop-size",
+        type=int,
+        default=448,
+        help="Resize crops to this dimension.",
+    )
+    parser.add_argument(
+        "--crops-overlap",
+        type=float,
+        default=0.3,
+        help="Percentual overlap between split crops.",
+    )
     return parser
 
 

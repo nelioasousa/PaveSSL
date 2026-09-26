@@ -257,61 +257,183 @@ class MetricLogger:
 def get_base_args_parser():
     parser = argparse.ArgumentParser(add_help=False)
     # Data related arguments
-    parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
+    parser.add_argument(
+        "--data",
+        type=Path,
+        default=Path("data/RDD2022_proc"),
+        help="Path to the prepared RDD2022 dataset.",
+    )
     parser.add_argument(
         "--sources-subset",
         choices=[1, 2, 3],
         type=int,
         default=1,
+        help="Which RDD2022 source subset to use for training.",
     )
     parser.add_argument(
         "--save-dir",
         type=Path,
         default=Path("data/results/ssl_pretrain"),
+        help="Central/parent directory for saving experiments.",
     )
-    parser.add_argument("--save-folder", type=str, required=True)
+    parser.add_argument(
+        "--save-folder",
+        type=str,
+        required=True,
+        help=(
+            "Experiment save folder. "
+            "The experiment results are saved in '--save-dir/--save-folder'."
+        ),
+    )
     # Training related arguments
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--lr-end", type=float, default=1e-6)
-    parser.add_argument("--lr-warmup-size", type=int, default=10)
-    parser.add_argument("--lr-warmup-start", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=0.04)
-    parser.add_argument("--weight-decay-end", type=float, default=0.4)
-    parser.add_argument("--disable-warmups", action="store_true")
-    parser.add_argument("--disable-schedules", action="store_true")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=100,
+        help="Number of training epochs.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Number of images per training step (batch size).",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=5e-4,
+        help="Learning rate start value for cosine scheduler.",
+    )
+    parser.add_argument(
+        "--lr-end",
+        type=float,
+        default=1e-6,
+        help="Learning rate end value for cosine scheduler."
+    )
+    parser.add_argument(
+        "--lr-warmup-size",
+        type=int,
+        default=10,
+        help="Learning rate warmup period size in epochs.",
+    )
+    parser.add_argument(
+        "--lr-warmup-start",
+        type=float,
+        default=1e-4,
+        help="Learning rate warmup start value.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.04,
+        help="Weight decay start value for cosine scheduler.",
+    )
+    parser.add_argument(
+        "--weight-decay-end",
+        type=float,
+        default=0.4,
+        help="Weight decay end value for cosine scheduler.",
+    )
+    parser.add_argument(
+        "--disable-warmups",
+        action="store_true",
+        help="Disable all warmups. All warmup period sizes are set to zero.",
+    )
+    parser.add_argument(
+        "--disable-schedulers",
+        action="store_true",
+        help=(
+            "Disable all cosine schedulers (lr and weight decay). "
+            "Values are kept constant throught training."
+        ),
+    )
     parser.add_argument(
         "--optim",
         type=str,
         choices=["adamw", "sgd"],
         default="adamw",
+        help="Which optimizer to use.",
     )
-    parser.add_argument("--increment", action="store_true")
-    parser.add_argument("--increment-suffix", type=str, default="_inc")
-    parser.add_argument("--validation-freq", type=int, default=3)
-    parser.add_argument("--checkpoint-freq", type=int, default=20)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--increment",
+        action="store_true",
+        help="Enable increment upon an already finished experiment.",
+    )
+    parser.add_argument(
+        "--increment-suffix",
+        type=str,
+        default="_inc",
+        help=(
+            "Suffix to append to the '--save-folder' of the incremented "
+            "experiment. The results are saved in this suffixed folder."
+        ),
+    )
+    parser.add_argument(
+        "--validation-freq",
+        type=int,
+        default=3,
+        help="Validation eval frequency in epochs.",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=20,
+        help="Training state saving frequency in epochs.",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of workers for data loading.",
+    )
     return parser
 
 
-def add_knn_eval_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--eval-num-crops", type=int, default=3)
-    parser.add_argument("--eval-crop-size", type=int, default=448)
-    parser.add_argument("--eval-dist-temperature", type=float, default=0.07)
-    parser.add_argument("--eval-pred-threshold", type=float, default=0.5)
+def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     parser.add_argument(
-        "--eval-ks",
+        f"--{prefix}ks",
         type=int,
         nargs="+",
         default=[10, 25, 50, 100],
+        help="Number of neighbours to use in kNN evalatuation.",
     )
     parser.add_argument(
-        "--eval-metrics",
+        f"--{prefix}num-crops",
+        type=int,
+        default=3,
+        help="Split images in N >= 2 crops for kNN evaluation.",
+    )
+    parser.add_argument(
+        f"--{prefix}crops-resize",
+        type=int,
+        default=448,
+        help="Resize evaluation crops to this dimension.",
+    )
+    parser.add_argument(
+        f"--{prefix}crops-overlap",
+        type=float,
+        default=0.3,
+        help="Percentual overlap between split crops.",
+    )
+    parser.add_argument(
+        f"--{prefix}dist-temperature",
+        type=float,
+        default=0.07,
+        help="Sharpening constant for samples distance weighting.",
+    )
+    parser.add_argument(
+        f"--{prefix}pred-threshold",
+        type=float,
+        default=0.5,
+        help="Threshold for kNN prediction.",
+    )
+    parser.add_argument(
+        f"--{prefix}metrics",
         type=str,
         nargs="+",
         choices=["accuracy", "sensitivity", "specificity"],
         default=["accuracy", "sensitivity", "specificity"],
+        help="Select 1+ of the available kNN evaluation metrics.",
     )
     return parser
 
@@ -325,7 +447,7 @@ def check_args(args: argparse.Namespace):
     args.checkpoint_freq = (
         args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
     )
-    if args.disable_schedules:
+    if args.disable_schedulers:
         args.lr_end = args.lr
         args.weight_decay_end = args.weight_decay
     if args.disable_warmups:
