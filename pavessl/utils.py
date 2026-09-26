@@ -254,18 +254,19 @@ class MetricLogger:
         )
 
 
-def get_base_args_parser():
-    parser = argparse.ArgumentParser(add_help=False)
-    # Data related arguments
+def add_data_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--data",
         type=Path,
         default=Path("data/RDD2022_proc"),
-        help="Path to the prepared RDD2022 dataset.",
+        help=(
+            "Path to the prepared RDD2022 dataset. "
+            "See 'prepare-data' command for more information."
+        ),
     )
     parser.add_argument(
         "--sources-subset",
-        choices=[1, 2, 3],
+        choices=[1, 2, 3, 4],
         type=int,
         default=1,
         help="Which RDD2022 source subset to use for training.",
@@ -285,7 +286,17 @@ def get_base_args_parser():
             "The experiment results are saved in '--save-dir/--save-folder'."
         ),
     )
-    # Training related arguments
+    return parser
+
+
+def check_data_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.results_dir = args.save_dir / args.save_folder
+    args.results_dir.mkdir(exist_ok=True, parents=True)
+    args.sources = get_rdd2022_sources(args.sources_subset)
+    return args
+
+
+def add_training_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--epochs",
         type=int,
@@ -302,13 +313,13 @@ def get_base_args_parser():
         "--lr",
         type=float,
         default=5e-4,
-        help="Learning rate start value for cosine scheduler.",
+        help="Learning rate start value (cosine annealing).",
     )
     parser.add_argument(
         "--lr-end",
         type=float,
         default=1e-6,
-        help="Learning rate end value for cosine scheduler."
+        help="Learning rate end value (cosine annealing).",
     )
     parser.add_argument(
         "--lr-warmup-size",
@@ -326,13 +337,13 @@ def get_base_args_parser():
         "--weight-decay",
         type=float,
         default=0.04,
-        help="Weight decay start value for cosine scheduler.",
+        help="Weight decay start value (cosine annealing).",
     )
     parser.add_argument(
         "--weight-decay-end",
         type=float,
         default=0.4,
-        help="Weight decay end value for cosine scheduler.",
+        help="Weight decay end value (cosine annealing).",
     )
     parser.add_argument(
         "--disable-warmups",
@@ -343,8 +354,8 @@ def get_base_args_parser():
         "--disable-schedulers",
         action="store_true",
         help=(
-            "Disable all cosine schedulers (lr and weight decay). "
-            "Values are kept constant throught training."
+            "Disable cosine annealing (lr and weight decay). "
+            "Values are kept constant during no-warmup epochs."
         ),
     )
     parser.add_argument(
@@ -372,13 +383,13 @@ def get_base_args_parser():
         "--validation-freq",
         type=int,
         default=3,
-        help="Validation eval frequency in epochs.",
+        help="Validation evaluation frequency in epochs.",
     )
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
         default=20,
-        help="Training state saving frequency in epochs.",
+        help="Training state persistency (checkpointing) frequency in epochs.",
     )
     parser.add_argument(
         "--num-workers",
@@ -387,6 +398,22 @@ def get_base_args_parser():
         help="Number of workers for data loading.",
     )
     return parser
+
+
+def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.epochs = max(1, args.epochs)
+    args.batch_size = max(1, args.batch_size)
+    args.checkpoint_freq = (
+        args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
+    )
+    if args.disable_schedulers:
+        args.lr_end = args.lr
+        args.weight_decay_end = args.weight_decay
+    if args.disable_warmups:
+        args.lr_warmup_size = 0
+    else:
+        args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
+    return args
 
 
 def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
@@ -407,7 +434,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
         f"--{prefix}crops-resize",
         type=int,
         default=448,
-        help="Resize evaluation crops to this dimension.",
+        help="Resize crops to this dimension.",
     )
     parser.add_argument(
         f"--{prefix}crops-overlap",
@@ -438,30 +465,9 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     return parser
 
 
-def check_args(args: argparse.Namespace):
-    args.results_dir = args.save_dir / args.save_folder
-    args.results_dir.mkdir(exist_ok=True, parents=True)
-    args.sources = get_rdd2022_sources(args.sources_subset)
-    args.epochs = max(1, args.epochs)
-    args.batch_size = max(args.batch_size, len(args.sources))
-    args.checkpoint_freq = (
-        args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
-    )
-    if args.disable_schedulers:
-        args.lr_end = args.lr
-        args.weight_decay_end = args.weight_decay
-    if args.disable_warmups:
-        args.lr_warmup_size = 0
-        args.teacher_temp_warmup_size = 0
-    else:
-        args.lr_warmup_size = max(0, min(args.lr_warmup_size, args.epochs))
-        args.teacher_temp_warmup_size = max(
-            0,
-            min(args.teacher_temp_warmup_size, args.epochs),
-        )
-    return args
-
-
-def load_exp_arguments(experiment_path: str | Path):
-    with (Path(experiment_path) / "run.args").open("rb") as args_file:
-        return pickle.load(args_file)
+def load_exp_arguments(experiment_path: str | Path) -> argparse.Namespace | None:
+    try:
+        with (Path(experiment_path) / "run.args").open("rb") as args_file:
+            return pickle.load(args_file)
+    except FileNotFoundError:
+        return None

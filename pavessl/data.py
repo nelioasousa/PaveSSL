@@ -12,8 +12,8 @@ from torchvision import tv_tensors
 from torchvision.transforms.v2 import Transform, query_size
 
 
-def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
-    subset_level = min(max(subset_level, 1), 3)
+def get_rdd2022_sources(subset_level: Literal[1, 2, 3, 4]):
+    subset_level = min(max(subset_level, 1), 4)
     sources = [
         "China_Drone",
         "China_MotorBike",
@@ -21,6 +21,7 @@ def get_rdd2022_sources(subset_level: Literal[1, 2, 3] = 3):
         "Norway",
         "Czech",
         "United_States",
+        "India",
     ]
     return sources[: (2 * subset_level)]
 

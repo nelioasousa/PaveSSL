@@ -78,7 +78,7 @@ def _check_run(args):
 
 def _pretrain(args):
     utils.set_random_seeds(42)
-    args = _check_args(args)
+    args = check_args(args)
     stored_args = _check_run(args)
     device = utils.get_device()
     # Models
@@ -358,8 +358,16 @@ def _eval(model, args):
     )
 
 
-def _check_args(args):
-    args = utils.check_args(args)
+def check_args(args: argparse.Namespace) -> argparse.Namespace:
+    args = utils.check_data_args(args)
+    args = utils.check_training_args(args)
+    if args.disable_warmups:
+        args.teacher_temp_warmup_size = 0
+    else:
+        args.teacher_temp_warmup_size = max(
+            0,
+            min(args.teacher_temp_warmup_size, args.epochs),
+        )
     args.freeze_last_layer_for = max(
         0,
         min(args.freeze_last_layer_for, args.epochs),
@@ -411,8 +419,11 @@ def get_args_parser():
             "Self-supervised backbone pre-training "
             "using DINOv1 with multi-task heads."
         ),
-        parents=[utils.get_base_args_parser()],
     )
+    # Data arguments
+    parser = utils.add_data_args(parser)
+    # Training arguments
+    parser = utils.add_training_args(parser)
     # Architecture
     parser.add_argument(
         "--dino-base",
@@ -470,7 +481,9 @@ def get_args_parser():
         default=0.02,
         help="Start value for the teacher softmax sharpening constant warmup.",
     )
+    # Multi-view arguments
     parser = add_multiview_args(parser)
+    # kNN evaluation arguments
     parser = utils.add_knn_eval_args(parser, prefix="eval-")
     return parser
 
