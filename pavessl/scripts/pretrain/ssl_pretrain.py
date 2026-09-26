@@ -14,6 +14,20 @@ from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.eval.knn_eval import knn_eval
 
 
+def _save_args(args):
+    with (args.results_dir / "run.args").open("wb") as args_file:
+        pickle.dump(obj=args, file=args_file, protocol=5)
+
+
+def _check_run(args):
+    try:
+        with (args.results_dir / "run.args").open("rb") as args_file:
+            return pickle.load(args_file)
+    except FileNotFoundError:
+        _save_args(args)
+        return args
+
+
 def _get_models(device, args):
     if args.dino_base:
         backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
@@ -29,14 +43,40 @@ def _get_models(device, args):
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
-    student = student.to(device=device, non_blocking=True)
-    teacher = teacher.to(device=device, non_blocking=True)
     # Teacher and Student start with the same weights
     teacher.load_state_dict(student.state_dict(), strict=False)
+    student = student.to(device=device, non_blocking=True)
+    teacher = teacher.to(device=device, non_blocking=True)
     # There is no backpropagation through the teacher
     for p in teacher.parameters():
         p.requires_grad = False
     return student, teacher
+
+
+def _get_train_data_loader(args):
+    multiview_trans = SSLMultiviewTransform(
+        global_size=args.global_size,
+        global_scale=args.global_scale,
+        local_size=args.local_size,
+        local_scale=args.local_scale,
+        num_local_views=args.num_local_views,
+    )
+    train_dataset = RDD2022(
+        data_path=args.data,
+        sources=args.sources,
+        split="train",
+        task="ssl",
+        transform=multiview_trans,
+    )
+    train_loader = DataLoader(
+        dataset=train_dataset,
+        batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
+        num_workers=args.num_workers,
+        collate_fn=SSLMultiviewTransform.multiview_collate_fn,
+        pin_memory=False,
+        persistent_workers=True,
+    )
+    return train_loader
 
 
 def _get_loss_function(device, args):
@@ -60,199 +100,6 @@ def _get_optimizer(model, args):
     if args.optim == "sgd":
         return torch.optim.SGD(params_groups, momentum=0.9)
     raise ValueError(f'Optimizer "{args.optim}" not supported')
-
-
-def _save_args(args):
-    with (args.results_dir / "run.args").open("wb") as args_file:
-        pickle.dump(obj=args, file=args_file, protocol=5)
-
-
-def _check_run(args):
-    try:
-        with (args.results_dir / "run.args").open("rb") as args_file:
-            return pickle.load(args_file)
-    except FileNotFoundError:
-        _save_args(args)
-        return args
-
-
-def _pretrain(args):
-    utils.set_random_seeds(42)
-    args = check_args(args)
-    stored_args = _check_run(args)
-    device = utils.get_device()
-    # Models
-    student, teacher = _get_models(device, stored_args)
-    # Data
-    train_loader = _get_train_data_loader(stored_args)
-    # Loss function
-    loss_fn = _get_loss_function(device, stored_args)
-    # Optimizer
-    optimizer = _get_optimizer(student, stored_args)
-    # Resume training
-    vars_to_restore = {
-        "epoch": 0,
-        "loss_history": None,
-        "valid_history": None,
-    }
-    utils.restart_from_checkpoint(
-        ckp_path=(stored_args.results_dir / "checkpoint.pth"),
-        run_variables=vars_to_restore,
-        student=student,
-        teacher=teacher,
-        loss=loss_fn,
-        optimizer=optimizer,
-    )
-    # Check run state
-    if vars_to_restore["epoch"] == stored_args.epochs:
-        if not args.increment:
-            print(f'Training at "{stored_args.results_dir}" already finished.')
-            print("Use --increment to increment upon this training run.")
-            return
-        # Increment finished training run
-        args.save_folder = f"{args.save_folder}{args.increment_suffix}"
-        args.results_dir = args.save_dir / args.save_folder
-        args.results_dir.mkdir(exist_ok=True, parents=True)
-        if (args.results_dir / "run.args").is_file():
-            raise ValueError(f'Directory "{args.results_dir}" already in use.')
-        # Sync some arguments
-        args.projection_dim = stored_args.projection_dim
-        args.dino_base = False
-        _save_args(args)
-        # Re-build with the new arguments
-        train_loader = _get_train_data_loader(args)
-        loss_fn = _get_loss_function(device, args)
-        optimizer = _get_optimizer(student, args)
-        # Unset run variables
-        vars_to_restore["epoch"] = 0
-        vars_to_restore["loss_history"] = None
-        vars_to_restore["valid_history"] = None
-    else:
-        if vars_to_restore["epoch"]:
-            print(
-                "Run arguments restored.",
-                f"Continuing training from epoch {vars_to_restore['epoch']}.",
-            )
-        args = stored_args
-    print(f'Saving results in "{args.results_dir}"')
-    # Restore loss and validation histories
-    loss_history = (
-        np.zeros((args.epochs, 3), dtype=np.float32)
-        if vars_to_restore["loss_history"] is None
-        else vars_to_restore["loss_history"]
-    )
-    valid_history = (
-        np.zeros(
-            (
-                1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                1 + (
-                    len(args.sources)
-                    * len(args.eval_ks)
-                    * len(args.eval_metrics)
-                ),
-            ),
-            dtype=np.float32,
-        )
-        if vars_to_restore["valid_history"] is None
-        else vars_to_restore["valid_history"]
-    )
-    # Schedulers
-    lr_schedule = utils.cosine_scheduler(
-        base_value=(args.lr * args.batch_size / 256.0),
-        final_value=(args.lr_end * args.batch_size / 256.0),
-        epochs=args.epochs,
-        niter_per_ep=len(train_loader),
-        warmup_epochs=args.lr_warmup_size,
-        start_warmup_value=(args.lr_warmup_start * args.batch_size / 256.0),
-    )
-    wd_schedule = utils.cosine_scheduler(
-        base_value=args.weight_decay,
-        final_value=args.weight_decay_end,
-        epochs=args.epochs,
-        niter_per_ep=len(train_loader),
-    )
-    momentum_schedule = utils.cosine_scheduler(
-        base_value=args.teacher_momentum,
-        final_value=1.0,
-        epochs=args.epochs,
-        niter_per_ep=len(train_loader),
-    )
-    # Training
-    start_time = time.monotonic()
-    for epoch in range(vars_to_restore["epoch"], args.epochs):
-        loss_log = _train_one_epoch(
-            student=student,
-            teacher=teacher,
-            loss_fn=loss_fn,
-            data_loader=train_loader,
-            optimizer=optimizer,
-            lr_schedule=lr_schedule,
-            wd_schedule=wd_schedule,
-            momentum_schedule=momentum_schedule,
-            epoch=epoch,
-            device=device,
-            args=args,
-        )
-        loss_history[epoch] = [
-            loss_log.min_value,
-            loss_log.max_value,
-            loss_log.global_avg,
-        ]
-        # Run validation
-        if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
-            row_index = math.ceil(epoch / args.validation_freq)
-            valid_history[row_index, 0] = epoch + 1
-            valid_history[row_index, 1:] = _eval(
-                model=teacher,
-                args=args,
-            )
-        # Save checkpoints
-        states_dict = {
-            "student": student.state_dict(),
-            "teacher": teacher.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "loss": loss_fn.state_dict(),
-            "epoch": epoch + 1,
-            "loss_history": loss_history,
-            "valid_history": valid_history,
-        }
-        utils.save_states(
-            save_file=(args.results_dir / "checkpoint.pth"),
-            states_dict=states_dict,
-        )
-        if not (epoch % args.checkpoint_freq):
-            utils.save_states(
-                save_file=(args.results_dir / f"checkpoint_{epoch:04d}.pth"),
-                states_dict=states_dict,
-            )
-    # Save histories and report run duration
-    np.savetxt(
-        fname=(args.results_dir / "loss_history.csv"),
-        X=loss_history,
-        delimiter=",",
-        fmt="%20.10e",
-        header="min,max,avg",
-        comments="",
-    )
-    valid_headers = ["epoch"]
-    valid_headers.extend(
-        [
-            f"{source}_{k}_{metric}"
-            for source in args.sources
-            for k in args.eval_ks
-            for metric in args.eval_metrics
-        ]
-    )
-    np.savetxt(
-        fname=(args.results_dir / "valid_history.csv"),
-        X=valid_history,
-        delimiter=",",
-        fmt=(["%04d"] + ["%.4f"] * (len(valid_headers) - 1)),
-        header=(",".join(valid_headers)),
-        comments="",
-    )
-    train_duration = int(time.monotonic() - start_time)
-    print(f"Training ended in {utils.get_time_string(train_duration)}!")
 
 
 def _train_one_epoch(
@@ -356,6 +203,178 @@ def _eval(model, args):
             for metric in args.eval_metrics
         ]
     )
+
+
+def _pretrain(args):
+    utils.set_random_seeds(42)
+    stored_args = _check_run(args)
+    device = utils.get_device()
+    # Models
+    student, teacher = _get_models(device, stored_args)
+    # Data
+    train_loader = _get_train_data_loader(stored_args)
+    # Loss function
+    loss_fn = _get_loss_function(device, stored_args)
+    # Optimizer
+    optimizer = _get_optimizer(student, stored_args)
+    # Resume training
+    vars_to_restore = {
+        "epoch": 0,
+        "loss_history": None,
+        "valid_history": None,
+    }
+    utils.restart_from_checkpoint(
+        ckp_path=(stored_args.results_dir / "checkpoint.pth"),
+        run_variables=vars_to_restore,
+        student=student,
+        teacher=teacher,
+        loss=loss_fn,
+        optimizer=optimizer,
+    )
+    # Check run state
+    if vars_to_restore["epoch"] == stored_args.epochs:
+        if not args.increment:
+            print(f'Training at "{stored_args.results_dir}" already finished.')
+            print("Use --increment to increment upon this training run.")
+            return
+        # Increment finished training run
+        args.save_folder = f"{args.save_folder}{args.increment_suffix}"
+        args.results_dir = args.save_dir / args.save_folder
+        args.results_dir.mkdir(exist_ok=True, parents=True)
+        if (args.results_dir / "run.args").is_file():
+            raise ValueError(f'Directory "{args.results_dir}" already in use.')
+        # Sync some arguments
+        args.projection_dim = stored_args.projection_dim
+        args.dino_base = False
+        _save_args(args)
+        # Re-build with the new arguments
+        train_loader = _get_train_data_loader(args)
+        loss_fn = _get_loss_function(device, args)
+        optimizer = _get_optimizer(student, args)
+        # Unset run variables
+        vars_to_restore["epoch"] = 0
+        vars_to_restore["loss_history"] = None
+        vars_to_restore["valid_history"] = None
+    else:
+        if vars_to_restore["epoch"]:
+            print("Run arguments restored. Continuing training...")
+        args = stored_args
+    print(f'Saving results in "{args.results_dir}".')
+    # Restore loss and validation histories
+    loss_history = (
+        np.zeros((args.epochs, 3), dtype=np.float32)
+        if vars_to_restore["loss_history"] is None
+        else vars_to_restore["loss_history"]
+    )
+    valid_history = (
+        np.zeros(
+            (
+                1 + math.ceil((args.epochs - 1) / args.validation_freq),
+                1 + (
+                    len(args.sources)
+                    * len(args.eval_ks)
+                    * len(args.eval_metrics)
+                ),
+            ),
+            dtype=np.float32,
+        )
+        if vars_to_restore["valid_history"] is None
+        else vars_to_restore["valid_history"]
+    )
+    # Schedulers
+    lr_schedule = utils.cosine_scheduler(
+        base_value=(args.lr * args.batch_size / 256.0),
+        final_value=(args.lr_end * args.batch_size / 256.0),
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+        warmup_epochs=args.lr_warmup_size,
+        start_warmup_value=(args.lr_warmup_start * args.batch_size / 256.0),
+    )
+    wd_schedule = utils.cosine_scheduler(
+        base_value=args.weight_decay,
+        final_value=args.weight_decay_end,
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+    )
+    momentum_schedule = utils.cosine_scheduler(
+        base_value=args.teacher_momentum,
+        final_value=1.0,
+        epochs=args.epochs,
+        niter_per_ep=len(train_loader),
+    )
+    # Training
+    start_time = time.monotonic()
+    for epoch in range(vars_to_restore["epoch"], args.epochs):
+        loss_log = _train_one_epoch(
+            student=student,
+            teacher=teacher,
+            loss_fn=loss_fn,
+            data_loader=train_loader,
+            optimizer=optimizer,
+            lr_schedule=lr_schedule,
+            wd_schedule=wd_schedule,
+            momentum_schedule=momentum_schedule,
+            epoch=epoch,
+            device=device,
+            args=args,
+        )
+        loss_history[epoch] = [
+            loss_log.min_value,
+            loss_log.max_value,
+            loss_log.global_avg,
+        ]
+        # Run validation
+        if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
+            row_index = math.ceil(epoch / args.validation_freq)
+            valid_history[row_index, 0] = epoch + 1
+            valid_history[row_index, 1:] = _eval(teacher, args)
+        # Save checkpoints
+        states_dict = {
+            "student": student.state_dict(),
+            "teacher": teacher.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "loss": loss_fn.state_dict(),
+            "epoch": epoch + 1,
+            "loss_history": loss_history,
+            "valid_history": valid_history,
+        }
+        utils.save_states(
+            save_file=(args.results_dir / "checkpoint.pth"),
+            states_dict=states_dict,
+        )
+        if not (epoch % args.checkpoint_freq):
+            utils.save_states(
+                save_file=(args.results_dir / f"checkpoint_{epoch:04d}.pth"),
+                states_dict=states_dict,
+            )
+    # Save histories and report run duration
+    np.savetxt(
+        fname=(args.results_dir / "loss_history.csv"),
+        X=loss_history,
+        delimiter=",",
+        fmt="%20.10e",
+        header="min,max,avg",
+        comments="",
+    )
+    valid_headers = ["epoch"]
+    valid_headers.extend(
+        [
+            f"{source}_{k}_{metric}"
+            for source in args.sources
+            for k in args.eval_ks
+            for metric in args.eval_metrics
+        ]
+    )
+    np.savetxt(
+        fname=(args.results_dir / "valid_history.csv"),
+        X=valid_history,
+        delimiter=",",
+        fmt=(["%04d"] + ["%.4f"] * (len(valid_headers) - 1)),
+        header=(",".join(valid_headers)),
+        comments="",
+    )
+    train_duration = int(time.monotonic() - start_time)
+    print(f"Training ended in {utils.get_time_string(train_duration)}!")
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -488,37 +507,11 @@ def get_args_parser():
     return parser
 
 
-def _get_train_data_loader(args):
-    multiview_trans = SSLMultiviewTransform(
-        global_size=args.global_size,
-        global_scale=args.global_scale,
-        local_size=args.local_size,
-        local_scale=args.local_scale,
-        num_local_views=args.num_local_views,
-    )
-    train_dataset = RDD2022(
-        data_path=args.data,
-        sources=args.sources,
-        split="train",
-        task="ssl",
-        transform=multiview_trans,
-    )
-    train_loader = DataLoader(
-        dataset=train_dataset,
-        batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
-        num_workers=args.num_workers,
-        collate_fn=SSLMultiviewTransform.multiview_collate_fn,
-        pin_memory=False,
-        persistent_workers=True,
-    )
-    return train_loader
-
-
 def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        _pretrain(args)
+        _pretrain(check_args(args))
         return 0
     except Exception:
         import traceback
