@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from pavessl import models, utils
 from pavessl.data import RDD2022, SSLMultiviewTransform
-from pavessl.scripts.knn_eval import knn_eval
+from pavessl.scripts.eval.knn_eval import knn_eval
 
 
 def _get_models(device, args):

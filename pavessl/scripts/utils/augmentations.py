@@ -6,7 +6,7 @@ import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
 from pavessl.data import MultiBottomSplit, SSLMultiviewTransform
-from pavessl.scripts.ssl_pretrain import add_multiview_args
+from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_args
 
 
 def main(args):

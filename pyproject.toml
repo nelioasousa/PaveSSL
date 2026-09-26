@@ -20,9 +20,16 @@ dev = ["ruff"]
 Source = "https://github.com/nelioasousa/PaveSSL"
 
 [project.scripts]
-ssl-pretrain = "pavessl.scripts.ssl_pretrain:run"
-data-overview = "pavessl.scripts.rdd2022_overview:run"
-prepare-data = "pavessl.scripts.rdd2022_prepare:run"
+# Dataset handling
+data-overview = "pavessl.scripts.rdd2022.overview:run"
+prepare-data = "pavessl.scripts.rdd2022.prepare:run"
+# Pre-training
+ssl-pretrain = "pavessl.scripts.pretrain.ssl_pretrain:run"
+# Evaluations
+knn-eval = "pavessl.scripts.eval.knn_eval:run"
+# Utilities
+plot-results = "pavessl.scripts.utils.plot_results:run"
+augmentations = "pavessl.scripts.utils.augmentations:run"
 
 
 [tool]
