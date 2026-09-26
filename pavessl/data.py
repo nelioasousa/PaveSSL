@@ -303,9 +303,7 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     def forward(self, img, label=None):
         views = [self.global1_aug(img), self.global2_aug(img)]
-        views.extend(
-            [self.local_aug(img) for _ in range(self.num_local_views)]
-        )
+        views.extend([self.local_aug(img) for _ in range(self.num_local_views)])
         return views, label
 
     @staticmethod

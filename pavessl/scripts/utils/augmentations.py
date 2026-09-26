@@ -61,7 +61,7 @@ def get_args_parser():
         "--save-dir",
         type=Path,
         required=True,
-        help="Directory path in which to save the augmentations."
+        help="Directory path in which to save the augmentations.",
     )
     parser.add_argument(
         "--max-images",
@@ -76,7 +76,7 @@ def get_args_parser():
         "--num-crops",
         type=int,
         default=3,
-        help="Split images in N >= 2 crops for kNN evaluation."
+        help="Split images in N >= 2 crops for kNN evaluation.",
     )
     parser.add_argument(
         "--crop-size",

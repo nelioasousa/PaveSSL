@@ -25,7 +25,7 @@ def _plot_loss_history(
             weights_only=False,
         )
         loss_df = pd.DataFrame(
-            data=ckpt["loss_history"][:ckpt["epoch"]],
+            data=ckpt["loss_history"][: ckpt["epoch"]],
             columns=["min", "max", "avg"],
         )
     loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
@@ -73,7 +73,7 @@ def _plot_valid_history(
                     for source in exp_args.sources
                     for k in exp_args.eval_ks
                     for metric in exp_args.eval_metrics
-                )
+                ),
             ],
         )
     fig, axs = plt.subplots(

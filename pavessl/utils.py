@@ -296,7 +296,9 @@ def check_data_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def add_training_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+def add_training_args(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
     parser.add_argument(
         "--epochs",
         type=int,
@@ -465,7 +467,9 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     return parser
 
 
-def load_exp_arguments(experiment_path: str | Path) -> argparse.Namespace | None:
+def load_exp_arguments(
+    experiment_path: str | Path,
+) -> argparse.Namespace | None:
     try:
         with (Path(experiment_path) / "run.args").open("rb") as args_file:
             return pickle.load(args_file)

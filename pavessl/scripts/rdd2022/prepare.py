@@ -8,7 +8,6 @@ from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
 
-
 CLASS_RENAME_MAP = {
     "D00": "crack_longitudinal",
     "D0w0": "crack_longitudinal",

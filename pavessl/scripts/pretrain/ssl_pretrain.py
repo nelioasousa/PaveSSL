@@ -270,7 +270,8 @@ def _pretrain(args):
         np.zeros(
             (
                 1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                1 + (
+                1
+                + (
                     len(args.sources)
                     * len(args.eval_ks)
                     * len(args.eval_metrics)
