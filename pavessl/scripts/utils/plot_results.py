@@ -8,7 +8,7 @@ import pandas as pd
 from pavessl.utils import load_exp_arguments
 
 
-def plot_loss_history(
+def _plot_loss_history(
     experiment_dir: Path,
     metric_name: str,
     metric_unit: str,
@@ -48,7 +48,7 @@ def plot_loss_history(
     return fig, ax
 
 
-def plot_valid_history(
+def _plot_valid_history(
     experiment_dir: Path,
     save_file: Path,
 ):
@@ -137,20 +137,20 @@ def get_args_parser():
     return parser
 
 
-def main(args):
+def _main(args):
     # Self-supervisde pre-train
     ssl_dir = args.ssl_pretrain_dir
     for ssl_exp in args.ssl_exps:
         exp_dir = ssl_dir / ssl_exp
         plots_dir = exp_dir / args.save_folder
         plots_dir.mkdir(exist_ok=True)
-        _ = plot_loss_history(
+        _ = _plot_loss_history(
             experiment_dir=exp_dir,
             metric_name="Cross Entropy",
             metric_unit="nats",
             save_file=(plots_dir / "loss_history.png"),
         )
-        _ = plot_valid_history(
+        _ = _plot_valid_history(
             experiment_dir=exp_dir,
             save_file=(plots_dir / "valid_history.png"),
         )
@@ -160,7 +160,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        main(args)
+        _main(args)
         return 0
     except Exception:
         import traceback

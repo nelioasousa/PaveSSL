@@ -76,7 +76,7 @@ def _check_run(args):
         return args
 
 
-def pretrain(args):
+def _pretrain(args):
     utils.set_random_seeds(42)
     args = _check_args(args)
     stored_args = _check_run(args)
@@ -444,7 +444,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        pretrain(args)
+        _pretrain(args)
         return 0
     except Exception:
         import traceback

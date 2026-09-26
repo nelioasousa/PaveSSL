@@ -8,14 +8,14 @@ from shutil import copy
 from tqdm import tqdm
 
 
-def main(data_path: Path, save_dir: Path, num_samples: int):
-    save_dir.mkdir(exist_ok=True, parents=True)
+def _main(args):
+    args.save_dir.mkdir(exist_ok=True, parents=True)
     sizes_count = defaultdict(lambda: defaultdict(int))
     objects_count = defaultdict(lambda: defaultdict(int))
     samples_count = defaultdict(lambda: defaultdict(int))
-    for source_dir in tqdm(list(data_path.iterdir())):
+    for source_dir in tqdm(list(args.data.iterdir())):
         source_name = source_dir.name
-        samples_dir = save_dir / source_name
+        samples_dir = args.save_dir / source_name
         samples_dir.mkdir(exist_ok=True)
         annotations_folder = source_dir / "train/annotations/xmls"
         images_folder = source_dir / "train/images"
@@ -36,13 +36,13 @@ def main(data_path: Path, save_dir: Path, num_samples: int):
             )
             for obj, count in label_obj_count.items():
                 objects_count[source_name][obj] += count
-                if samples_count[source_name][obj] < num_samples:
+                if samples_count[source_name][obj] < args.num_samples:
                     sample_dir = samples_dir / "_".join(obj.split())
                     sample_dir.mkdir(exist_ok=True)
                     image_name = f"{label.stem}.jpg"
                     copy(images_folder / image_name, sample_dir / image_name)
                     samples_count[source_name][obj] += 1
-    with (save_dir / "overview.json").open("w") as f:
+    with (args.save_dir / "overview.json").open("w") as f:
         json_dump([sizes_count, objects_count], f, indent=2, sort_keys=True)
 
 
@@ -51,22 +51,20 @@ def get_arg_parser():
         description="A simple overview of the RDD2022 dataset training sets.",
     )
     parser.add_argument(
-        "data",
+        "--data",
         type=Path,
-        default="data/RDD2022",
-        nargs="?",
+        default=Path("data/RDD2022"),
         help="Path to the RDD2022 dataset.",
     )
     parser.add_argument(
-        "save_dir",
+        "--save-dir",
         type=Path,
-        default="data/RDD2022_overview",
-        nargs="?",
+        default=Path("data/RDD2022_overview"),
         help="Where to save the overview results.",
     )
     parser.add_argument(
         "-n",
-        "--num_samples",
+        "--num-samples",
         type=int,
         default=50,
         help="Number of samples selected per object class.",
@@ -78,7 +76,7 @@ def run():
     try:
         parser = get_arg_parser()
         args = parser.parse_args()
-        main(args.data.resolve(), args.save_dir.resolve(), args.num_samples)
+        _main(args)
         return 0
     except Exception:
         import traceback

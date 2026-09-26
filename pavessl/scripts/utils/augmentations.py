@@ -9,7 +9,7 @@ from pavessl.data import MultiBottomSplit, SSLMultiviewTransform
 from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_args
 
 
-def main(args):
+def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
     multiview = SSLMultiviewTransform(
         global_size=args.global_size,
@@ -64,7 +64,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        main(args)
+        _main(args)
         return 0
     except Exception:
         import traceback

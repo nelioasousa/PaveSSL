@@ -8,10 +8,8 @@ from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
 
-random.seed(42)
 
-
-CLASS_NAMES_MAP = {
+CLASS_RENAME_MAP = {
     "D00": "crack_longitudinal",
     "D0w0": "crack_longitudinal",
     "D10": "crack_transverse",
@@ -26,9 +24,9 @@ CLASS_NAMES_MAP = {
     "D44": "blur_white_line",
 }
 
-CLASSES = sorted(set(CLASS_NAMES_MAP.values()))
+CLASSES = sorted(frozenset(CLASS_RENAME_MAP.values()))
 
-CLASS_INDEXES = {class_name: i for i, class_name in enumerate(CLASSES)}
+CLASS_INDEX_MAP = {class_name: i for i, class_name in enumerate(CLASSES)}
 
 NORWAY_TARGET_SIZE = 2000
 
@@ -71,14 +69,14 @@ def _get_bboxes_from_xml_label(label_path: Path):
             ymax = round(float(bbox.findtext("ymax")))
         except TypeError:
             continue
-        bboxes.append((CLASS_NAMES_MAP[class_name], xmin, ymin, xmax, ymax))
+        bboxes.append((CLASS_RENAME_MAP[class_name], xmin, ymin, xmax, ymax))
     return bboxes
 
 
 def _save_bboxes_to_annotation(bboxes, ann_save_path):
     label_lines = [
         "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
-            CLASS_INDEXES[cls_name],
+            CLASS_INDEX_MAP[cls_name],
             *coords,
         )
         for cls_name, *coords in bboxes
@@ -111,7 +109,7 @@ def _get_stratified_splits(
     for pair in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(pair[1])
         class_group = tuple(
-            sorted(frozenset(CLASS_INDEXES[name] for name, *_ in bboxes))
+            sorted(frozenset(CLASS_INDEX_MAP[name] for name, *_ in bboxes))
         )
         pairs_by_class_group[class_group].append(pair)
     train_pairs, valid_pairs, test_pairs = [], [], []
@@ -184,18 +182,18 @@ def _prepare_dst_folder(dest_folder: Path):
         (split_folder / "annotations").mkdir(exist_ok=True)
 
 
-def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
-    save_dir.mkdir(exist_ok=True, parents=True)
-    for source_folder in tqdm(list(data_path.iterdir())):
-        dst_folder = save_dir / source_folder.name
+def _main(args):
+    args.save_dir.mkdir(exist_ok=True, parents=True)
+    for source_folder in tqdm(list(args.data.iterdir())):
+        dst_folder = args.save_dir / source_folder.name
         _prepare_dst_folder(dst_folder)
         classes, train_split, valid_split, test_split = _train_valid_test_split(
             source_folder,
-            train_prop,
-            valid_prop,
+            args.train_prop,
+            args.valid_prop,
         )
         (dst_folder / "classes.txt").write_text(
-            "\n".join(f"{CLASS_INDEXES[cls]} {cls}" for cls in classes)
+            "\n".join(f"{CLASS_INDEX_MAP[cls]} {cls}" for cls in classes)
         )
         for img_path, label_path in train_split:
             img = Image.open(img_path)
@@ -222,7 +220,7 @@ def main(data_path: Path, train_prop: float, valid_prop: float, save_dir: Path):
                     dst_folder / f"{split}/annotations/{label_path.stem}.txt"
                 )
                 _save_bboxes_to_annotation(bboxes, ann_dst)
-    (save_dir / "classes.txt").write_text("\n".join(CLASSES))
+    (args.save_dir / "classes.txt").write_text("\n".join(CLASSES))
 
 
 def get_arg_parser():
@@ -233,46 +231,40 @@ def get_arg_parser():
         ),
     )
     parser.add_argument(
+        "--data",
+        type=Path,
+        default=Path("data/RDD2022"),
+        help="Path to the RDD2022 dataset.",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        default=Path("data/RDD2022_proc"),
+        help="Where to save the prepared dataset.",
+    )
+    parser.add_argument(
         "-tp",
-        "--train_proportion",
+        "--train-prop",
         type=float,
         default=0.75,
         help="Proportion of the train split.",
     )
     parser.add_argument(
         "-vp",
-        "--valid_proportion",
+        "--valid-prop",
         type=float,
         default=0.1,
         help="Proportion of the validation split.",
-    )
-    parser.add_argument(
-        "data",
-        type=Path,
-        default="data/RDD2022",
-        nargs="?",
-        help="Path to the RDD2022 dataset.",
-    )
-    parser.add_argument(
-        "save_dir",
-        type=Path,
-        default="data/RDD2022_proc",
-        nargs="?",
-        help="Where to save the prepared dataset.",
     )
     return parser
 
 
 def run():
     try:
+        random.seed(42)
         parser = get_arg_parser()
         args = parser.parse_args()
-        main(
-            args.data.resolve(),
-            args.train_proportion,
-            args.valid_proportion,
-            args.save_dir.resolve(),
-        )
+        _main(args)
         return 0
     except Exception:
         import traceback
