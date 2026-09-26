@@ -330,22 +330,18 @@ def _pretrain(args):
             valid_history[row_index, 0] = epoch + 1
             valid_history[row_index, 1:] = _eval(teacher, args)
         # Save checkpoints
-        states_dict = {
-            "student": student.state_dict(),
-            "teacher": teacher.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "loss": loss_fn.state_dict(),
-            "epoch": epoch + 1,
-            "loss_history": loss_history,
-            "valid_history": valid_history,
-        }
-        utils.save_states(
-            save_file=(args.results_dir / "checkpoint.pth"),
-            states_dict=states_dict,
-        )
         if not (epoch % args.checkpoint_freq):
+            states_dict = {
+                "student": student.state_dict(),
+                "teacher": teacher.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "loss": loss_fn.state_dict(),
+                "epoch": epoch + 1,
+                "loss_history": loss_history,
+                "valid_history": valid_history,
+            }
             utils.save_states(
-                save_file=(args.results_dir / f"checkpoint_{epoch:04d}.pth"),
+                save_file=(args.results_dir / "checkpoint.pth"),
                 states_dict=states_dict,
             )
     # Save histories and report run duration
