@@ -23,10 +23,6 @@ CLASS_RENAME_MAP = {
     "D44": "blur_white_line",
 }
 
-CLASSES = sorted(frozenset(CLASS_RENAME_MAP.values()))
-
-CLASS_INDEX_MAP = {class_name: i for i, class_name in enumerate(CLASSES)}
-
 NORWAY_TARGET_SIZE = 2000
 
 
@@ -72,10 +68,10 @@ def _get_bboxes_from_xml_label(label_path: Path):
     return bboxes
 
 
-def _save_bboxes_to_annotation(bboxes, ann_save_path):
+def _save_bboxes_to_annotation(bboxes, ann_save_path, classes):
     label_lines = [
         "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
-            CLASS_INDEX_MAP[cls_name],
+            classes.index(cls_name),
             *coords,
         )
         for cls_name, *coords in bboxes
@@ -107,9 +103,7 @@ def _get_stratified_splits(
     pairs_by_class_group = defaultdict(list)
     for pair in image_label_pairs:
         bboxes = _get_bboxes_from_xml_label(pair[1])
-        class_group = tuple(
-            sorted(frozenset(CLASS_INDEX_MAP[name] for name, *_ in bboxes))
-        )
+        class_group = tuple(sorted(frozenset(name for name, *_ in bboxes)))
         pairs_by_class_group[class_group].append(pair)
     train_pairs, valid_pairs, test_pairs = [], [], []
     total_size = train_size + valid_size + test_size
@@ -191,9 +185,7 @@ def _main(args):
             args.train_prop,
             args.valid_prop,
         )
-        (dst_folder / "classes.txt").write_text(
-            "\n".join(f"{CLASS_INDEX_MAP[cls]} {cls}" for cls in classes)
-        )
+        (dst_folder / "classes.txt").write_text("\n".join(classes))
         for img_path, label_path in train_split:
             img = Image.open(img_path)
             bboxes = (
@@ -207,7 +199,7 @@ def _main(args):
             if label_path is None:
                 continue
             ann_dst = dst_folder / f"train/annotations/{label_path.stem}.txt"
-            _save_bboxes_to_annotation(bboxes, ann_dst)
+            _save_bboxes_to_annotation(bboxes, ann_dst, classes)
         for split, pairs in (("valid", valid_split), ("test", test_split)):
             for img_path, label_path in pairs:
                 img = Image.open(img_path)
@@ -215,11 +207,11 @@ def _main(args):
                 if source_folder.name == "Norway":
                     img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
                 img.save(dst_folder / f"{split}/images/{img_path.name}")
-                ann_dst = (
-                    dst_folder / f"{split}/annotations/{label_path.stem}.txt"
+                _save_bboxes_to_annotation(
+                    bboxes,
+                    dst_folder / f"{split}/annotations/{label_path.stem}.txt",
+                    classes,
                 )
-                _save_bboxes_to_annotation(bboxes, ann_dst)
-    (args.save_dir / "classes.txt").write_text("\n".join(CLASSES))
 
 
 def get_arg_parser():

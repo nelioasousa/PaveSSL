@@ -47,7 +47,7 @@ class RDD2022(Dataset):
     ):
         data_path = data_path.resolve()
         if not data_path.is_dir():
-            raise NotADirectoryError(f"Not a directory: {data_path}")
+            raise NotADirectoryError(f'Not a directory: "{data_path}"')
         all_sources = [s.name for s in data_path.iterdir() if s.is_dir()]
         if sources == "all":
             sources = all_sources
@@ -65,44 +65,27 @@ class RDD2022(Dataset):
         self.sources = sources
         self.task = task
         self.transform = transform
-        # Global (whole dataset) and local (selected sources) target classes
-        self.classes = []
-        _global_indexes = {}
-        _global_index_class_map = {}
-        for source in sources:
-            source_classes = [
-                line.split(maxsplit=1)
-                for line in (data_path / source / "classes.txt")
-                .read_text()
-                .splitlines()
-            ]
-            cls_indxs = [int(cls_idx) for cls_idx, _ in source_classes]
-            cls_names = [cls_name for _, cls_name in source_classes]
-            self.classes.extend(cls_names)
-            _global_indexes[source] = cls_indxs
-            _global_index_class_map.update(
-                {idx: cls_name for idx, cls_name in zip(cls_indxs, cls_names)}
-            )
-        self.classes = sorted(set(self.classes))
-        self.global_local_index_map = {
-            indx: self.classes.index(cls_name)
-            for indx, cls_name in _global_index_class_map.items()
+        # Handling sources with different classes
+        self.sources_classes = {
+            source: (data_path / source / "classes.txt")
+            .read_text()
+            .splitlines()
+            for source in sources
         }
-        self.local_indexes = {
-            source: torch.tensor(
-                data=[self.global_local_index_map[idx] for idx in global_indxs],
-                dtype=torch.long,
-            )
-            for source, global_indxs in _global_indexes.items()
+        self.classes = sorted(set().union(*self.sources_classes.values()))
+        self.sources_classes = {
+            source: [self.classes.index(cls_name) for cls_name in classes]
+            for source, classes in self.sources_classes.items()
         }
-        self.sources_mask = {
-            source: torch.zeros(len(self.classes)).index_fill_(
-                dim=0,
-                index=local_indxs,
-                value=1.0,
-            )
-            for source, local_indxs in self.local_indexes.items()
-        }
+        if task == "classification":
+            self.sources_classification_mask = {
+                source: torch.zeros(len(self.classes)).index_fill_(
+                    dim=0,
+                    index=torch.tensor(indexes, dtype=torch.long),
+                    value=1.0,
+                )
+                for source, indexes in self.sources_classes.items()
+            }
         # Not all train images have annotations
         if split == "train" and task != "ssl":
             self.images = {
@@ -144,7 +127,7 @@ class RDD2022(Dataset):
 
     def _load_classific_label(self, label_path, source):
         labels = [
-            self.global_local_index_map[idx]
+            self.sources_classes[source][idx]
             for idx in load_bboxes(label_path)["labels"]
         ]
         return {
@@ -154,13 +137,13 @@ class RDD2022(Dataset):
                 value=1.0,
             ),
             "weight": self.sources_weight[source],
-            "mask": self.sources_mask[source].clone(),
+            "mask": self.sources_classification_mask[source].clone(),
         }
 
     def _load_detection_label(self, label_path, dim, source):
         bboxes = load_bboxes(label_path)
         bboxes["labels"] = [
-            self.global_local_index_map[idx] for idx in bboxes["labels"]
+            self.sources_classes[source][idx] for idx in bboxes["labels"]
         ]
         return {
             "boxes": tv_tensors.BoundingBoxes(
@@ -171,7 +154,6 @@ class RDD2022(Dataset):
             ),
             "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
             "weight": self.sources_weight[source],
-            "classes": self.local_indexes[source].clone(),
         }
 
     def __getitem__(self, item_ref: int | tuple[str, int]):
