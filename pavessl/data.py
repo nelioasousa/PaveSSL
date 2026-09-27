@@ -295,29 +295,31 @@ class SSLMultiviewTransform(torch.nn.Module):
         local_size: int,
         local_scale: tuple[float, float],
     ):
-        # Cropping
+        # Geometric transformations
         local_crop = BottomRandomResizedCrop(local_size, local_scale)
         global_crop = BottomRandomResizedCrop(global_size, global_scale)
-        # Geometric transformations
+        hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
         rotation = transforms_v2.RandomApply(
             [transforms_v2.RandomRotation(degrees=10, expand=False)],
             p=0.4,
         )
-        hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
         # Photometric transformations
+        ### CollorJitter is known to return NaN values
+        ### Best to put it before any other photometric transformations
+        ### Or apply it with the image in INT format/dtype
+        collor_jitter = transforms_v2.RandomApply(
+            [
+                transforms_v2.ColorJitter(
+                    brightness=0.4,
+                    contrast=0.4,
+                    saturation=0.2,
+                    hue=0.1,
+                )
+            ],
+            p=0.85,
+        )
         solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.35)
         photometric_transforms = [
-            transforms_v2.RandomApply(
-                [
-                    transforms_v2.ColorJitter(
-                        brightness=0.4,
-                        contrast=0.4,
-                        saturation=0.2,
-                        hue=0.1,
-                    )
-                ],
-                p=0.85,
-            ),
             transforms_v2.RandomPosterize(bits=6, p=0.35),
             transforms_v2.RandomApply(
                 [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.2))],
@@ -331,6 +333,7 @@ class SSLMultiviewTransform(torch.nn.Module):
                 rotation,
                 global_crop,
                 hflip,
+                collor_jitter,
                 solarize,
                 *photometric_transforms,
             ]
@@ -340,6 +343,7 @@ class SSLMultiviewTransform(torch.nn.Module):
                 rotation,
                 global_crop,
                 hflip,
+                collor_jitter,
                 *photometric_transforms,
             ]
         )
@@ -349,6 +353,7 @@ class SSLMultiviewTransform(torch.nn.Module):
                 rotation,
                 local_crop,
                 hflip,
+                collor_jitter,
                 *photometric_transforms,
             ]
         )
