@@ -153,7 +153,7 @@ def _train_one_epoch(
         # Loss explosion, unstable training
         loss_value = loss.item()  # CPU-GPU synchronization
         if not math.isfinite(loss_value):
-            raise SystemExit(f"Loss exploded with value {loss_value}")
+            raise RuntimeError(f"Loss exploded with value {loss_value}")
         # Student update
         optimizer.zero_grad()
         loss.backward()
