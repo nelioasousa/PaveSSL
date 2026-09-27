@@ -63,7 +63,7 @@ def _plot_valid_history(
             map_location="cpu",
             weights_only=False,
         )
-        index = 1 + ckpt["epoch"] // exp_args.validation_freq
+        index = ckpt["epoch"] // exp_args.validation_freq
         valid_df = pd.DataFrame(
             data=ckpt["valid_history"][:index],
             columns=[
