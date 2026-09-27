@@ -433,7 +433,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
         help="Split images in N >= 2 crops for kNN evaluation.",
     )
     parser.add_argument(
-        f"--{prefix}crops-resize",
+        f"--{prefix}crop-size",
         type=int,
         default=448,
         help="Resize crops to this dimension.",

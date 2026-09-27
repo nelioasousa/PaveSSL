@@ -5,7 +5,7 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl.data import MultiBottomSplit, SSLMultiviewTransform
+from pavessl.data import MultiCropBottomSplit, SSLMultiviewTransform
 from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_args
 
 
@@ -18,10 +18,10 @@ def _main(args):
         local_scale=args.local_scale,
         num_local_views=args.num_local_views,
     )
-    bottomsplit = MultiBottomSplit(
-        size=args.crop_size,
+    bottomsplit = MultiCropBottomSplit(
+        crop_size=args.crop_size,
         num_crops=args.num_crops,
-        overlap=args.crops_overlap,
+        crops_overlap=args.crops_overlap,
     )
     for processed, img_path in enumerate(args.images.glob("*.jpg")):
         if processed >= args.max_images:

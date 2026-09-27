@@ -7,7 +7,7 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader
 
-from pavessl.data import RDD2022, MultiBottomSplit, get_rdd2022_sources
+from pavessl.data import RDD2022, MultiCropBottomSplit, get_rdd2022_sources
 from pavessl.utils import MetricLogger, add_knn_eval_args
 
 
@@ -85,16 +85,16 @@ def _get_feature_similarities_and_labels(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
-    image_size: int,
-    num_split_crops: int,
+    crop_size: int,
+    num_crops: int,
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
 ):
-    transform = MultiBottomSplit(
-        size=image_size,
-        num_crops=num_split_crops,
-        overlap=crops_overlap,
+    transform = MultiCropBottomSplit(
+        crop_size=crop_size,
+        num_crops=num_crops,
+        crops_overlap=crops_overlap,
     )
     dataset = RDD2022(
         data_path=data_path,
@@ -135,8 +135,8 @@ def knn_eval_one(
     temperature: float,
     data_path: Path,
     target_source: str,
-    image_size: int,
-    num_split_crops: int,
+    crop_size: int,
+    num_crops: int,
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
@@ -147,8 +147,8 @@ def knn_eval_one(
         model=model,
         data_path=data_path,
         target_source=target_source,
-        image_size=image_size,
-        num_split_crops=num_split_crops,
+        crop_size=crop_size,
+        num_crops=num_crops,
         crops_overlap=crops_overlap,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -208,8 +208,8 @@ def knn_eval(
             temperature=distance_temperature,
             data_path=data_path,
             target_source=source,
-            image_size=crop_size,
-            num_split_crops=num_crops,
+            crop_size=crop_size,
+            num_crops=num_crops,
             crops_overlap=crops_overlap,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -241,7 +241,7 @@ def _main(args):
         pred_threshold=args.pred_threshold,
         data_path=args.data,
         target_sources=target_sources,
-        crop_size=args.crops_resize,
+        crop_size=args.crop_size,
         num_crops=args.num_crops,
         crops_overlap=args.crops_overlap,
         batch_size=args.batch_size,

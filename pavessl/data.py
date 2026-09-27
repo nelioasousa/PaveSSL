@@ -393,20 +393,25 @@ class SSLMultiviewTransform(torch.nn.Module):
         return global_views, local_views, weights
 
 
-class MultiBottomSplit(transforms_v2.Transform):
+class MultiCropBottomSplit(transforms_v2.Transform):
     _bottom_threshold = 0.6
 
-    def __init__(self, size: int, num_crops: int = 3, overlap: float = 0.0):
+    def __init__(
+        self,
+        crop_size: int,
+        num_crops: int = 3,
+        crops_overlap: float = 0.0,
+    ):
         super().__init__()
         if num_crops < 2:
             raise ValueError("Only make sense for 2 or more crops.")
-        if size < 1:
+        if crop_size < 1:
             raise ValueError("`size` must be positive.")
-        if overlap >= 1.0:
+        if crops_overlap >= 1.0:
             raise ValueError("`overlap` can not be >= 1.0")
-        self.size = size
+        self.size = crop_size
         self.num_crops = num_crops
-        self.overlap = overlap
+        self.overlap = crops_overlap
         self.local_cache = {}
 
     def make_params(self, flat_inputs):
