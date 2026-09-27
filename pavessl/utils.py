@@ -435,7 +435,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     parser.add_argument(
         f"--{prefix}crop-size",
         type=int,
-        default=448,
+        default=336,
         help="Resize crops to this dimension.",
     )
     parser.add_argument(
