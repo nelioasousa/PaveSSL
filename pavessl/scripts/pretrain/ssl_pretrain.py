@@ -341,8 +341,9 @@ def _pretrain(args):
                 "valid_history": valid_history,
             }
             utils.save_states(
-                save_file=(args.results_dir / "checkpoint.pth"),
+                save_dir=args.results_dir,
                 states_dict=states_dict,
+                epoch=epoch,
             )
     # Save histories and report run duration
     np.savetxt(

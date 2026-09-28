@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from collections.abc import Iterable
 from numbers import Real
 from pathlib import Path
+from shutil import copy2
 from typing import Any
 
 import numpy as np
@@ -65,11 +66,12 @@ def get_device():
 
 def save_states(
     *,
-    save_file: Path,
+    save_dir: Path,
     states_dict: dict[str, Any],
-    temp_suffix: str = ".tmp",
+    epoch: int | None = None,
 ):
-    tmp_file = save_file.with_suffix(f"{save_file.suffix}{temp_suffix}")
+    save_file = save_dir / "checkpoint.pth"
+    tmp_file = save_file.with_suffix(".tmp")
     try:
         with tmp_file.open("wb") as tmp:
             torch.save(obj=states_dict, f=tmp)
@@ -77,10 +79,12 @@ def save_states(
             os.fsync(tmp.fileno())
     except Exception as e:
         tmp_file.unlink(missing_ok=True)
-        raise RuntimeError(f"Error while saving state to {save_file}") from e
+        raise RuntimeError(f'Error while saving state to "{save_file}"') from e
     else:
         # If an error occurs here, the tmp_file is already safe
         try:
+            if epoch is not None:
+                copy2(tmp_file, save_dir / f"checkpoint_{epoch:03d}.pth")
             os.replace(tmp_file, save_file)
         except Exception as e:
             raise RuntimeError(
