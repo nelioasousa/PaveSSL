@@ -179,7 +179,7 @@ def _train_one_epoch(
     return metric_logger.meters["loss"]
 
 
-def _eval(model, args):
+def _eval(model, header, args):
     model.eval()
     eval_results = knn_eval(
         model=model.backbone,
@@ -194,6 +194,7 @@ def _eval(model, args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         simplified=True,
+        logging_header=header,
     )
     return np.array(
         [
@@ -266,16 +267,12 @@ def _pretrain(args):
         if vars_to_restore["loss_history"] is None
         else vars_to_restore["loss_history"]
     )
+    num_metrics = len(args.sources) * len(args.eval_ks) * len(args.eval_metrics)
     valid_history = (
         np.zeros(
             (
                 1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                1
-                + (
-                    len(args.sources)
-                    * len(args.eval_ks)
-                    * len(args.eval_metrics)
-                ),
+                2 * num_metrics + 1,
             ),
             dtype=np.float32,
         )
@@ -328,7 +325,16 @@ def _pretrain(args):
         if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
             row_index = math.ceil(epoch / args.validation_freq)
             valid_history[row_index, 0] = epoch + 1
-            valid_history[row_index, 1:] = _eval(teacher, args)
+            valid_history[row_index, 1 : num_metrics + 1] = _eval(
+                model=student,
+                header="(Student Eval)",
+                args=args,
+            )
+            valid_history[row_index, num_metrics + 1 :] = _eval(
+                model=teacher,
+                header="(Teacher Eval)",
+                args=args,
+            )
         # Save checkpoints
         if not (epoch % args.checkpoint_freq) or (epoch + 1) == args.epochs:
             states_dict = {
@@ -357,7 +363,8 @@ def _pretrain(args):
     valid_headers = ["epoch"]
     valid_headers.extend(
         [
-            f"{source}_{k}_{metric}"
+            f"{model}__{source}__{k}__{metric}"
+            for model in ("student", "teacher")
             for source in args.sources
             for k in args.eval_ks
             for metric in args.eval_metrics

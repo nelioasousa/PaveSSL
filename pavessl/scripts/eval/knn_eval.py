@@ -90,6 +90,7 @@ def _get_feature_similarities_and_labels(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
+    header: str = "",
 ):
     transform = MultiCropBottomSplit(
         crop_size=crop_size,
@@ -108,7 +109,7 @@ def _get_feature_similarities_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"(Valid) [{target_source}/train]",
+        header=f"{header}{' ' if header else ''}[{target_source}/train]",
     )
     dataset = RDD2022(
         data_path=data_path,
@@ -122,7 +123,7 @@ def _get_feature_similarities_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"(Valid) [{target_source}/valid]",
+        header=f"{header}{' ' if header else ''}[{target_source}/valid]",
     )
     similarities = torch.mm(valid_features, train_features.t())
     return similarities, train_labels, valid_labels
@@ -140,7 +141,8 @@ def knn_eval_one(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    threshold: float = 0.3,
+    threshold: float,
+    logging_header: str = "",
 ):
     max_k = max(ks)
     similarities_and_labels = _get_feature_similarities_and_labels(
@@ -152,6 +154,7 @@ def knn_eval_one(
         crops_overlap=crops_overlap,
         batch_size=batch_size,
         num_workers=num_workers,
+        header=logging_header,
     )
     similarities, train_labels, valid_labels = similarities_and_labels
     similarities, idxs = similarities.topk(
@@ -199,6 +202,7 @@ def knn_eval(
     batch_size: int,
     num_workers: int,
     simplified: bool = False,
+    logging_header: str = "",
 ):
     results = {}
     for source in target_sources:
@@ -214,6 +218,7 @@ def knn_eval(
             batch_size=batch_size,
             num_workers=num_workers,
             threshold=pred_threshold,
+            logging_header=logging_header,
         )
         if simplified:
             results[source] = {

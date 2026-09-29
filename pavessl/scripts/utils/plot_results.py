@@ -69,7 +69,8 @@ def _plot_valid_history(
             columns=[
                 "epoch",
                 *(
-                    f"{source}_{k}_{metric}"
+                    f"{model}__{source}__{k}__{metric}"
+                    for model in ("student", "teacher")
                     for source in exp_args.sources
                     for k in exp_args.eval_ks
                     for metric in exp_args.eval_metrics
@@ -79,28 +80,37 @@ def _plot_valid_history(
     fig, axs = plt.subplots(
         len(exp_args.eval_metrics),
         len(exp_args.eval_ks),
-        figsize=(len(exp_args.eval_ks) * 5, len(exp_args.eval_metrics) * 3),
+        figsize=(len(exp_args.eval_ks) * 6, len(exp_args.eval_metrics) * 4),
         sharex=True,
         sharey="row",
     )
     for i, metric in enumerate(exp_args.eval_metrics):
         for j, k in enumerate(exp_args.eval_ks):
             ax = axs[i, j]
-            for source in exp_args.sources:
+            for color_index, source in enumerate(exp_args.sources):
                 ax.plot(
                     "epoch",
-                    f"{source}_{k}_{metric}",
+                    f"student__{source}__{k}__{metric}",
                     data=valid_df,
-                    label=source,
+                    label=f"{source} (student)",
+                    color=f"C{color_index}",
+                    linestyle="dashdot",
                 )
-            ax.grid(axis="y", alpha=0.7, linestyle="--")
+                ax.plot(
+                    "epoch",
+                    f"teacher__{source}__{k}__{metric}",
+                    data=valid_df,
+                    label=f"{source} (teacher)",
+                    color=f"C{color_index}",
+                )
+            ax.grid(axis="y", alpha=0.6, linestyle="--")
             if not i:
                 ax.set_title(f"K = {k}")
             if i == len(exp_args.eval_metrics) - 1:
                 ax.set_xlabel("Epoch")
             if not j:
                 ax.set_ylabel(f"{metric.upper()} (%)")
-                ax.legend()
+                ax.legend(ncols=2)
             if j == len(exp_args.eval_ks) - 1:
                 ax.tick_params(
                     axis="y",
