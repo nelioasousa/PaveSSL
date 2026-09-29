@@ -286,7 +286,6 @@ def _pretrain(args):
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
         warmup_epochs=args.lr_warmup_size,
-        start_warmup_value=(args.lr_warmup_start * args.batch_size / 256.0),
     )
     wd_schedule = utils.cosine_scheduler(
         base_value=args.weight_decay,

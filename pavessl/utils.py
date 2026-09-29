@@ -334,12 +334,6 @@ def add_training_args(
         help="Learning rate warmup period size in epochs.",
     )
     parser.add_argument(
-        "--lr-warmup-start",
-        type=float,
-        default=1e-4,
-        help="Learning rate warmup start value.",
-    )
-    parser.add_argument(
         "--weight-decay",
         type=float,
         default=0.04,
