@@ -382,13 +382,13 @@ def add_training_args(
     parser.add_argument(
         "--validation-freq",
         type=int,
-        default=3,
+        default=2,
         help="Validation evaluation frequency in epochs.",
     )
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
-        default=20,
+        default=5,
         help="Training state persistency (checkpointing) frequency in epochs.",
     )
     parser.add_argument(

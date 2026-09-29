@@ -476,7 +476,7 @@ def get_args_parser():
     parser.add_argument(
         "--freeze-last-layer-for",
         type=int,
-        default=3,
+        default=5,
         help="Freeze last layer of student projection heads for N epochs.",
     )
     # Sharpness temperature
