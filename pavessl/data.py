@@ -399,7 +399,7 @@ class SSLMultiviewTransform(torch.nn.Module):
 
 
 class MultiCropBottomSplit(transforms_v2.Transform):
-    _bottom_threshold = 0.6
+    _bottom_threshold = 0.5
 
     def __init__(
         self,
@@ -431,7 +431,7 @@ class MultiCropBottomSplit(transforms_v2.Transform):
         crops = [
             {
                 "top": (
-                    torch.randint(thres, limit, size=(1,)).item()
+                    round((thres + limit) / 2)
                     if limit > thres
                     else limit
                 ),
