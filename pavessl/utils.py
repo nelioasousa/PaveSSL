@@ -425,13 +425,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
         help="Number of neighbours to use in kNN evalatuation.",
     )
     parser.add_argument(
-        f"--{prefix}num-crops",
-        type=int,
-        default=3,
-        help="Split images in N >= 2 crops for kNN evaluation.",
-    )
-    parser.add_argument(
-        f"--{prefix}crop-size",
+        f"--{prefix}crops-target-size",
         type=int,
         default=448,
         help="Resize crops to this dimension.",
@@ -439,7 +433,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     parser.add_argument(
         f"--{prefix}crops-overlap",
         type=float,
-        default=0.3,
+        default=0.1,
         help="Percentual overlap between split crops.",
     )
     parser.add_argument(

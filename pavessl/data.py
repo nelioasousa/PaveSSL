@@ -398,49 +398,35 @@ class SSLMultiviewTransform(torch.nn.Module):
         return global_views, local_views, weights
 
 
-class MultiCropBottomSplit(transforms_v2.Transform):
-    _bottom_threshold = 0.5
-
-    def __init__(
-        self,
-        crop_size: int,
-        num_crops: int = 3,
-        crops_overlap: float = 0.0,
-    ):
+class FourPointCrops(transforms_v2.Transform):
+    def __init__(self, size: int, overlap: float):
         super().__init__()
-        if num_crops < 2:
-            raise ValueError("Only make sense for 2 or more crops.")
-        if crop_size < 1:
-            raise ValueError("`size` must be positive.")
-        if crops_overlap >= 1.0:
-            raise ValueError("`overlap` can not be >= 1.0")
-        self.size = crop_size
-        self.num_crops = num_crops
-        self.overlap = crops_overlap
-        self.local_cache = {}
+        self.size = size
+        self.overlap = overlap
 
     def make_params(self, flat_inputs):
-        h, w = query_size(flat_inputs)
-        try:
-            crop_size = self.local_cache[w]
-        except KeyError:
-            crop_size = min(h, self._compute_split_crop_size(w))
-            self.local_cache[w] = crop_size
-        thres = max(0, int(h * self._bottom_threshold - crop_size / 2))
-        limit = h - crop_size
-        crops = [
+        w, h = query_size(flat_inputs)
+        crop_size = {
+            "width": min(w, round(w * (1 + self.overlap) / 2)),
+            "height": min(h, round(h * (1 + self.overlap) / 2)),
+        }
+        return [
+            # Top-left
+            {"top": 0, "left": 0, **crop_size},
+            # Top-right
+            {"top": 0, "left": w - crop_size["width"], **crop_size},
+            # Bottom-left
+            {"top": h - crop_size["height"], "left": 0, **crop_size},
+            # Bottom-right
             {
-                "top": (round((thres + limit) / 2) if limit > thres else limit),
-                "left": int(left),
-                "height": crop_size,
-                "width": crop_size,
-            }
-            for left in np.linspace(0, w - crop_size, self.num_crops)
+                "top": h - crop_size["height"],
+                "left": w - crop_size["width"],
+                **crop_size,
+            },
         ]
-        return {"crops": crops}
 
     def transform(self, inpt, params):
-        if not isinstance(inpt, torch.Tensor) or len(inpt.shape) == 1:
+        if not isinstance(inpt, torch.Tensor) or len(inpt.shape) != 3:
             return inpt
         crops = [
             transforms_v2.functional.resized_crop(
@@ -448,19 +434,6 @@ class MultiCropBottomSplit(transforms_v2.Transform):
                 size=self.size,
                 **crop,
             )
-            for crop in params["crops"]
+            for crop in params
         ]
         return crops
-
-    def _compute_split_crop_size(self, width: int):
-        n = self.num_crops
-        crop_size = int(width / n)
-        overlap = self.overlap
-        increment = 1 if overlap > 0.0 else -1
-        overlap = abs(overlap)
-        while True:
-            actual_overlap = (n * crop_size - width) / (crop_size * (n - 1))
-            if actual_overlap >= overlap:
-                break
-            crop_size += increment
-        return crop_size
