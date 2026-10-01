@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 from collections.abc import Iterable
 from numbers import Real
 from pathlib import Path
-from shutil import copy2
+from shutil import copy2, rmtree
 from typing import Any
 
 import numpy as np
@@ -290,12 +290,26 @@ def add_data_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
             "The experiment results are saved in '--save-dir/--save-folder'."
         ),
     )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help=(
+            "Start a clear experiment run, removing any results "
+            "stored in the save directory from previous runs."
+        ),
+    )
     return parser
 
 
 def check_data_args(args: argparse.Namespace) -> argparse.Namespace:
     args.results_dir = args.save_dir / args.save_folder
     args.results_dir.mkdir(exist_ok=True, parents=True)
+    if args.clear:
+        for item in args.results_dir.iterdir():
+            if item.is_file():
+                item.unlink()
+            if item.is_dir():
+                rmtree(item)
     args.sources = get_rdd2022_sources(args.sources_subset)
     return args
 
