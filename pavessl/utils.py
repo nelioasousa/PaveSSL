@@ -421,7 +421,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
         f"--{prefix}ks",
         type=int,
         nargs="+",
-        default=[10, 25, 50, 100],
+        default=[5, 10, 25, 50],
         help="Number of neighbours to use in kNN evalatuation.",
     )
     parser.add_argument(
@@ -433,7 +433,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     parser.add_argument(
         f"--{prefix}crop-size",
         type=int,
-        default=336,
+        default=448,
         help="Resize crops to this dimension.",
     )
     parser.add_argument(
