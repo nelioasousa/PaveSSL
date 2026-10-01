@@ -32,15 +32,18 @@ def _check_run(args):
 def _get_models(device, args):
     backbone = torchvision.models.resnet50()
     backbone.fc = nn.Identity()
+    print(f"ResNet-50 # parameters: {utils.get_num_parameters(backbone):,d}")
     student = models.DualHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
     )
+    print(f"Student model # parameters: {utils.get_num_parameters(student):,d}")
     teacher = models.SingleHeadProjectionNetwork(
         backbone=deepcopy(backbone),
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
+    print(f"Teacher model # parameters: {utils.get_num_parameters(teacher):,d}")
     # Teacher and Student start with the same weights
     teacher.load_state_dict(student.state_dict(), strict=False)
     student = student.to(device=device, non_blocking=True)

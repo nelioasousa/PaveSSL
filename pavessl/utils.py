@@ -39,6 +39,10 @@ def get_params_groups(model: torch.nn.Module):
     ]
 
 
+def get_num_parameters(model: torch.nn.Module):
+    return sum(p.numel() for p in model.parameters())
+
+
 def cosine_scheduler(
     base_value: float,
     final_value: float,
