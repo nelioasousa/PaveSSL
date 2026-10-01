@@ -233,7 +233,7 @@ class MetricLogger:
             yield item
             iter_duration.update(time.monotonic() - end_time)
             if not (i % print_freq) or i == (len(iterable) - 1):
-                eta_seconds = iter_duration.global_avg * (len(iterable) - i - 1)
+                eta_seconds = iter_duration.local_avg * (len(iterable) - i - 1)
                 eta_string = get_time_string(int(eta_seconds))
                 print(
                     log_msg.format(
