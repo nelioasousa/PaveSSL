@@ -2,6 +2,7 @@ import argparse
 import math
 import pickle
 import time
+from copy import deepcopy
 
 import numpy as np
 import torch
@@ -29,17 +30,14 @@ def _check_run(args):
 
 
 def _get_models(device, args):
-    if args.dino_base:
-        backbone = torch.hub.load("facebookresearch/dino:main", "dino_resnet50")
-    else:
-        backbone = torchvision.models.resnet50()
-        backbone.fc = nn.Identity()
+    backbone = torchvision.models.resnet50()
+    backbone.fc = nn.Identity()
     student = models.DualHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
     )
     teacher = models.SingleHeadProjectionNetwork(
-        backbone=backbone,
+        backbone=deepcopy(backbone),
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
@@ -244,9 +242,12 @@ def _pretrain(args):
         args.results_dir.mkdir(exist_ok=True, parents=True)
         if (args.results_dir / "run.args").is_file():
             raise ValueError(f'Directory "{args.results_dir}" already in use.')
-        # Sync some arguments
-        args.projection_dim = stored_args.projection_dim
-        args.dino_base = False
+        # Check from projection dimension mismatch
+        if args.projection_dim != stored_args.projection_dim:
+            raise ValueError(
+                "Projection dimension changed from "
+                f"{stored_args.projection_dim} to {args.projection_dim}"
+            )
         _save_args(args)
         # Re-build with the new arguments
         train_loader = _get_train_data_loader(args)
@@ -448,11 +449,6 @@ def get_args_parser():
     # Training arguments
     parser = utils.add_training_args(parser)
     # Architecture
-    parser.add_argument(
-        "--dino-base",
-        action="store_true",
-        help="Used DINOv1 ImageNet-1K pre-trained backbone as start point.",
-    )
     parser.add_argument(
         "--projection-dim",
         type=int,
