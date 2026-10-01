@@ -129,8 +129,10 @@ def _train_one_epoch(
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     epoch_str = str(epoch + 1).rjust(len(str(args.epochs)), "0")
     header = f"(Train) Epoch: [{epoch_str}/{args.epochs}]"
+    # More or less 50 log lines per iteration
+    log_every = max(5, 5 * len(data_loader) // (5 * 50))
     for it, (global_views, local_views, weights) in enumerate(
-        metric_logger.log_every(data_loader, 10, header)
+        metric_logger.log_every(data_loader, log_every, header)
     ):
         global_views = global_views.to(device=device, non_blocking=True)
         local_views = local_views.to(device=device, non_blocking=True)

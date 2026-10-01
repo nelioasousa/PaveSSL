@@ -47,7 +47,8 @@ def _compute_features(
     for i, (images, targets) in enumerate(
         metric_logger.log_every(
             iterable=data_loader,
-            print_freq=10,
+            # More or less 50 log lines per iteration
+            print_freq=max(5, 5 * len(data_loader) // (5 * 50)),
             header=header,
             cpu_training=(device.type != "cuda"),
         )
