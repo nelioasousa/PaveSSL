@@ -430,11 +430,7 @@ class MultiCropBottomSplit(transforms_v2.Transform):
         limit = h - crop_size
         crops = [
             {
-                "top": (
-                    round((thres + limit) / 2)
-                    if limit > thres
-                    else limit
-                ),
+                "top": (round((thres + limit) / 2) if limit > thres else limit),
                 "left": int(left),
                 "height": crop_size,
                 "width": crop_size,
