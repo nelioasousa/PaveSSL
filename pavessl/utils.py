@@ -302,12 +302,22 @@ def add_data_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
             "stored in the save directory from previous runs."
         ),
     )
+    parser.add_argument(
+        "--start-points-dir",
+        type=Path,
+        default=Path("data/results/start_points"),
+        help=(
+            "Directory where to look for start-point checkpoints "
+            "(model states) for common initialization of models."
+        ),
+    )
     return parser
 
 
 def check_data_args(args: argparse.Namespace) -> argparse.Namespace:
     args.results_dir = args.save_dir / args.save_folder
     args.results_dir.mkdir(exist_ok=True, parents=True)
+    args.start_points_dir.mkdir(exist_ok=True, parents=True)
     if args.clear:
         for item in args.results_dir.iterdir():
             if item.is_file():

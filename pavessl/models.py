@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 import torch
+import torchvision
 from torch import nn
 from torch.nn import functional as F
 
@@ -36,6 +39,27 @@ def _init_linear(m):
         nn.init.trunc_normal_(m.weight, std=0.02)
         if m.bias is not None:
             nn.init.constant_(m.bias, val=0)
+
+
+def build_resnet50_backbone(
+    backbone_state_path: str | Path | None = None,
+) -> torchvision.models.ResNet:
+    backbone = torchvision.models.resnet50()
+    backbone.fc = nn.Identity()
+    if backbone_state_path is None:
+        return backbone
+    backbone_state_path = Path(backbone_state_path)
+    if backbone_state_path.is_file():
+        backbone.load_state_dict(
+            torch.load(
+                f=backbone_state_path,
+                map_location="cpu",
+                weights_only=True,
+            )
+        )
+    else:
+        torch.save(backbone.state_dict(), backbone_state_path)
+    return backbone
 
 
 class ProjectionHead(nn.Module):

@@ -30,16 +30,22 @@ def _check_run(args):
 
 
 def _get_models(device, args):
-    backbone = torchvision.models.resnet50()
-    backbone.fc = nn.Identity()
+    # Student network
+    backbone = models.build_resnet50_backbone(
+        args.start_points_dir / "resnet50_backbone.pth",
+    )
     print(f"ResNet-50 # parameters: {utils.get_num_parameters(backbone):,d}")
     student = models.DualHeadProjectionNetwork(
         backbone=backbone,
         projection_dim=args.projection_dim,
     )
     print(f"Student model # parameters: {utils.get_num_parameters(student):,d}")
+    # Teacher network
+    backbone = models.build_resnet50_backbone(
+        args.start_points_dir / "resnet50_backbone.pth",
+    )
     teacher = models.SingleHeadProjectionNetwork(
-        backbone=deepcopy(backbone),
+        backbone=backbone,
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
@@ -48,7 +54,7 @@ def _get_models(device, args):
     teacher.load_state_dict(student.state_dict(), strict=False)
     student = student.to(device=device, non_blocking=True)
     teacher = teacher.to(device=device, non_blocking=True)
-    # There is no backpropagation through the teacher
+    # There is no backpropagation through the Teacher
     for p in teacher.parameters():
         p.requires_grad = False
     return student, teacher
