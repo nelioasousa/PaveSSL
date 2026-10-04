@@ -328,6 +328,8 @@ def _pretrain(args):
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.lr = 1e-3 if args.lr is None else args.lr
+    args.lr_end = 1e-5 if args.lr_end is None else args.lr_end
     args = utils.check_data_args(args)
     args = utils.check_training_args(args)
     return args

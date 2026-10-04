@@ -349,13 +349,13 @@ def add_training_args(
     parser.add_argument(
         "--lr",
         type=float,
-        default=5e-4,
+        default=None,
         help="Learning rate start value (cosine annealing).",
     )
     parser.add_argument(
         "--lr-end",
         type=float,
-        default=1e-6,
+        default=None,
         help="Learning rate end value (cosine annealing).",
     )
     parser.add_argument(
@@ -413,7 +413,7 @@ def add_training_args(
     parser.add_argument(
         "--validation-freq",
         type=int,
-        default=2,
+        default=1,
         help="Validation evaluation frequency in epochs.",
     )
     parser.add_argument(

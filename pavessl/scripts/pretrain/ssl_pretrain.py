@@ -393,6 +393,8 @@ def _pretrain(args):
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.lr = 5e-4 if args.lr is None else args.lr
+    args.lr_end = 1e-6 if args.lr_end is None else args.lr_end
     args = utils.check_data_args(args)
     args = utils.check_training_args(args)
     if args.disable_warmups:
@@ -422,7 +424,7 @@ def add_multiview_args(parser: argparse.ArgumentParser):
         "--global-scale",
         type=float,
         nargs=2,
-        default=(0.6, 0.85),
+        default=(0.7, 0.9),
         help="Min-max range of image area for global crops.",
     )
     parser.add_argument(
@@ -435,7 +437,7 @@ def add_multiview_args(parser: argparse.ArgumentParser):
         "--local-scale",
         type=float,
         nargs=2,
-        default=(0.125, 0.4),
+        default=(0.25, 0.5),
         help="Min-max range of image area for local crops.",
     )
     parser.add_argument(
