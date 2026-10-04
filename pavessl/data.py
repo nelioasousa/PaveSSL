@@ -437,3 +437,47 @@ class FourPointCrops(transforms_v2.Transform):
             for crop in params
         ]
         return crops
+
+
+def get_augmentation(size: int, scale: tuple[float, float]):
+    # Geometric transformations
+    random_crop = BottomRandomResizedCrop(size, scale)
+    hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
+    rotation = transforms_v2.RandomApply(
+        [transforms_v2.RandomRotation(degrees=10, expand=False)],
+        p=0.4,
+    )
+    # Photometric transformations
+    ### CollorJitter is known to return NaN values
+    ### Best to put it before any other photometric transformations
+    ### Or apply it with the image in INT format/dtype
+    collor_jitter = transforms_v2.RandomApply(
+        [
+            transforms_v2.ColorJitter(
+                brightness=0.4,
+                contrast=0.4,
+                saturation=0.2,
+                hue=0.1,
+            )
+        ],
+        p=0.85,
+    )
+    solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.35)
+    photometric_transforms = [
+        transforms_v2.RandomPosterize(bits=6, p=0.35),
+        transforms_v2.RandomApply(
+            [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.2))],
+            p=0.75,
+        ),
+        transforms_v2.RandomGrayscale(p=0.25),
+    ]
+    return transforms_v2.Compose(
+        [
+            rotation,
+            random_crop,
+            hflip,
+            collor_jitter,
+            solarize,
+            *photometric_transforms,
+        ]
+    )

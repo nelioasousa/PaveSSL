@@ -25,6 +25,7 @@ data-overview = "pavessl.scripts.rdd2022.overview:run"
 prepare-data = "pavessl.scripts.rdd2022.prepare:run"
 # Pre-training
 ssl-pretrain = "pavessl.scripts.pretrain.ssl_pretrain:run"
+sup-pretrain = "pavessl.scripts.pretrain.sup_pretrain:run"
 # Evaluations
 knn-eval = "pavessl.scripts.eval.knn_eval:run"
 # Utilities

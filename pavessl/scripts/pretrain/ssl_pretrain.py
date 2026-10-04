@@ -455,7 +455,7 @@ def get_args_parser():
         ),
     )
     # Data arguments
-    parser = utils.add_data_args(parser)
+    parser = utils.add_data_args(parser, "ssl_pretrain")
     # Training arguments
     parser = utils.add_training_args(parser)
     # Architecture

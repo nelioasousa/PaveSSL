@@ -262,7 +262,10 @@ class MetricLogger:
         )
 
 
-def add_data_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+def add_data_args(
+    parser: argparse.ArgumentParser,
+    results_folder: str,
+) -> argparse.ArgumentParser:
     parser.add_argument(
         "--data",
         type=Path,
@@ -282,7 +285,7 @@ def add_data_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--save-dir",
         type=Path,
-        default=Path("data/results/ssl_pretrain"),
+        default=Path(f"data/results/{results_folder}"),
         help="Central/parent directory for saving experiments.",
     )
     parser.add_argument(

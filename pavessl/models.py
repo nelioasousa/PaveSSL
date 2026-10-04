@@ -34,7 +34,7 @@ def get_out_shape(
 
 
 @torch.no_grad()
-def _init_linear(m):
+def init_linear(m):
     if isinstance(m, nn.Linear):
         nn.init.trunc_normal_(m.weight, std=0.02)
         if m.bias is not None:
@@ -92,9 +92,9 @@ class ProjectionHead(nn.Module):
                 )
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
-        self.apply(_init_linear)
+        self.apply(init_linear)
         last_layer = nn.Linear(bottleneck_dim, out_dim, bias=False)
-        _init_linear(last_layer)
+        init_linear(last_layer)
         self.last_layer = nn.utils.parametrizations.weight_norm(last_layer)
         mag_weights = self.last_layer.parametrizations.weight.original0
         nn.init.constant_(mag_weights, 1.0)
@@ -142,8 +142,8 @@ class SingleHeadProjectionNetwork(nn.Module):
                 "Backbone output must have shape "
                 f"(batch, N), got {backbone_out_shp}"
             )
-        self.backbone = backbone
         self.backbone_out_dim = backbone_out_shp[-1]
+        self.backbone = backbone
         self.global_head = ProjectionHead(
             in_dim=self.backbone_out_dim,
             out_dim=projection_dim,
@@ -287,3 +287,87 @@ class SSLLoss(nn.Module):
         self.center = self.center * self.center_momentum + batch_center * (
             1 - self.center_momentum
         )
+
+
+class ClassificationHead(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        num_layers: int = 3,
+        hidden_dim: int = 2048,
+    ):
+        super().__init__()
+        num_layers = max(num_layers, 1)
+        if num_layers == 1:
+            self.mlp = nn.Linear(in_dim, out_dim)
+        else:
+            layers = [
+                nn.Linear(in_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.GELU(),
+            ]
+            for _ in range(num_layers - 2):
+                layers.extend(
+                    [
+                        nn.Linear(hidden_dim, hidden_dim),
+                        nn.BatchNorm1d(hidden_dim),
+                        nn.GELU(),
+                    ]
+                )
+            layers.append(nn.Linear(hidden_dim, out_dim))
+            self.mlp = nn.Sequential(*layers)
+        self.apply(init_linear)
+
+    def forward(self, x):
+        x = self.mlp(x)
+        return x
+
+
+class ClassificationNetwork(nn.Module):
+    def __init__(
+        self,
+        backbone: nn.Module,
+        num_classes: int,
+        head_num_layers: int = 3,
+        head_hidden_dim: int = 2048,
+    ):
+        super().__init__()
+        backbone_out_shp = get_out_shape(backbone)
+        if len(backbone_out_shp) != 2:
+            raise ValueError(
+                "Backbone output must have shape "
+                f"(batch, N), got {backbone_out_shp}"
+            )
+        self.num_classes = num_classes
+        self.backbone_out_dim = backbone_out_shp[-1]
+        self.backbone = backbone
+        self.head = ClassificationHead(
+            in_dim=self.backbone_out_dim,
+            out_dim=num_classes,
+            num_layers=head_num_layers,
+            hidden_dim=head_hidden_dim,
+        )
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.head(x)
+        return x
+
+
+class MultiValueClassificationLoss(nn.Module):
+    def forward(
+        self,
+        logits,
+        targets,
+        weights,
+        mask,
+    ):
+        bce = nn.functional.binary_cross_entropy_with_logits(
+            input=logits,
+            target=targets,
+            reduction="none",
+        )
+        bce = bce.mul_(mask)
+        loss = (weights * bce.sum(dim=-1)).mean()
+        return loss
