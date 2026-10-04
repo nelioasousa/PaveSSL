@@ -337,12 +337,12 @@ def _pretrain(args):
             valid_history[row_index, 0] = epoch + 1
             valid_history[row_index, 1 : num_metrics + 1] = _eval(
                 model=student,
-                header="(Student Eval)",
+                header="(Eval/Student)",
                 args=args,
             )
             valid_history[row_index, num_metrics + 1 :] = _eval(
                 model=teacher,
-                header="(Teacher Eval)",
+                header="(Eval/Teacher)",
                 args=args,
             )
         # Save checkpoints

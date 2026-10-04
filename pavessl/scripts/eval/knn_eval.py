@@ -105,7 +105,7 @@ def _get_feature_similarities_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"{header}{' ' if header else ''}[{target_source}/train]",
+        header=f"{header}{' ' if header else ''}[{target_source}: train split]",
     )
     dataset = RDD2022(
         data_path=data_path,
@@ -119,7 +119,7 @@ def _get_feature_similarities_and_labels(
         dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"{header}{' ' if header else ''}[{target_source}/valid]",
+        header=f"{header}{' ' if header else ''}[{target_source}: valid split]",
     )
     similarities = torch.mm(valid_features, train_features.t())
     return similarities, train_labels, valid_labels

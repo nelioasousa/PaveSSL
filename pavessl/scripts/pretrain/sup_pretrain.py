@@ -279,7 +279,7 @@ def _pretrain(args):
             valid_history[row_index, 0] = epoch + 1
             valid_history[row_index, 1:] = _eval(
                 model=classifier,
-                header="(Classifier Eval)",
+                header="(Eval/Classifier)",
                 args=args,
             )
         # Save checkpoints
