@@ -41,24 +41,25 @@ def init_linear(m):
             nn.init.constant_(m.bias, val=0)
 
 
-def build_resnet50_backbone(
-    backbone_state_path: str | Path | None = None,
+def build_backbone(
+    state_path: str | Path | None = None,
 ) -> torchvision.models.ResNet:
     backbone = torchvision.models.resnet50()
     backbone.fc = nn.Identity()
-    if backbone_state_path is None:
+    if state_path is None:
         return backbone
-    backbone_state_path = Path(backbone_state_path)
-    if backbone_state_path.is_file():
+    state_path = Path(state_path)
+    if state_path.is_file():
         backbone.load_state_dict(
             torch.load(
-                f=backbone_state_path,
+                f=state_path,
                 map_location="cpu",
                 weights_only=True,
-            )
+            ),
+            strict=True,
         )
-    else:
-        torch.save(backbone.state_dict(), backbone_state_path)
+        return backbone
+    torch.save(backbone.state_dict(), state_path)
     return backbone
 
 
@@ -192,6 +193,31 @@ class DualHeadProjectionNetwork(SingleHeadProjectionNetwork):
         x_local = self.backbone(x_local)
         x_local = self.local_head(x_local)
         return x_global, x_local
+
+
+def build_projection_network(
+    network_cls: type[SingleHeadProjectionNetwork | DualHeadProjectionNetwork],
+    network_state_path: str | Path | None = None,
+    backbone_state_path: str | Path | None = None,
+    **kwargs,
+) -> SingleHeadProjectionNetwork | DualHeadProjectionNetwork:
+    backbone = build_backbone(backbone_state_path)
+    model = network_cls(backbone=backbone, **kwargs)
+    if network_state_path is None:
+        return model
+    network_state_path = Path(network_state_path)
+    if network_state_path.is_file():
+        model.load_state_dict(
+            torch.load(
+                f=network_state_path,
+                map_location="cpu",
+                weights_only=True,
+            ),
+            strict=True,
+        )
+        return model
+    torch.save(model.state_dict(), network_state_path)
+    return model
 
 
 class SSLLoss(nn.Module):

@@ -45,15 +45,18 @@ def _get_train_data_loader(args):
 
 
 def _get_classifier(num_classes, device, args):
-    backbone = models.build_resnet50_backbone(
-        args.start_points_dir / "resnet50_backbone.pth",
+    backbone = models.build_backbone(
+        state_path=(args.start_points_dir / "resnet50_backbone.pth"),
     )
-    print(f"ResNet-50 # parameters: {utils.get_num_parameters(backbone):,d}")
     classifier = models.ClassificationNetwork(
         backbone=backbone,
         num_classes=num_classes,
     )
-    print(f"Classifier # parameters: {utils.get_num_parameters(classifier):,d}")
+    backbone_nparams = utils.get_num_parameters(backbone)
+    classifier_nparams = utils.get_num_parameters(classifier)
+    print(f"Backbone # params: {backbone_nparams:,d}")
+    print(f"Network  # params: {classifier_nparams:,d}")
+    print(f"Head     # params: {(classifier_nparams - backbone_nparams):,d}")
     return classifier.to(device=device, non_blocking=True)
 
 

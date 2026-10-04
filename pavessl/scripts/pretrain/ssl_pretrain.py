@@ -2,12 +2,9 @@ import argparse
 import math
 import pickle
 import time
-from copy import deepcopy
 
 import numpy as np
 import torch
-import torchvision.models
-from torch import nn
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
@@ -31,25 +28,28 @@ def _check_run(args):
 
 def _get_models(device, args):
     # Student network
-    backbone = models.build_resnet50_backbone(
-        args.start_points_dir / "resnet50_backbone.pth",
-    )
-    print(f"ResNet-50 # parameters: {utils.get_num_parameters(backbone):,d}")
-    student = models.DualHeadProjectionNetwork(
-        backbone=backbone,
+    student = models.build_projection_network(
+        network_cls=models.DualHeadProjectionNetwork,
+        network_state_path=(args.start_points_dir / "ssl_student_net.pth"),
+        backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
         projection_dim=args.projection_dim,
     )
-    print(f"Student model # parameters: {utils.get_num_parameters(student):,d}")
+    student_nparams = utils.get_num_parameters(student)
+    backbone_nparams = utils.get_num_parameters(student.backbone)
+    print(f"Backbone    # params: {backbone_nparams:,d}")
+    print(f"Student net # params: {student_nparams:,d}")
     # Teacher network
-    backbone = models.build_resnet50_backbone(
-        args.start_points_dir / "resnet50_backbone.pth",
-    )
-    teacher = models.SingleHeadProjectionNetwork(
-        backbone=backbone,
+    teacher = models.build_projection_network(
+        network_cls=models.SingleHeadProjectionNetwork,
+        network_state_path=(args.start_points_dir / "ssl_teacher_net.pth"),
+        backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
         projection_dim=args.projection_dim,
         head_norm_last_layer=True,
     )
-    print(f"Teacher model # parameters: {utils.get_num_parameters(teacher):,d}")
+    teacher_nparams = utils.get_num_parameters(teacher)
+    print(f"Teacher net # params: {teacher_nparams:,d}")
+    print(f"Global head # params: {(teacher_nparams - backbone_nparams):,d}")
+    print(f"Local head  # params: {(student_nparams - teacher_nparams):,d}")
     # Teacher and Student start with the same weights
     teacher.load_state_dict(student.state_dict(), strict=False)
     student = student.to(device=device, non_blocking=True)
