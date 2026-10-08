@@ -326,7 +326,8 @@ class ClassificationHead(nn.Module):
         super().__init__()
         num_layers = max(num_layers, 1)
         if num_layers == 1:
-            self.mlp = nn.Linear(in_dim, out_dim)
+            self.mlp = nn.Identity()
+            self.last_layer = nn.Linear(in_dim, out_dim)
         else:
             layers = [
                 nn.Linear(in_dim, hidden_dim),
@@ -341,12 +342,13 @@ class ClassificationHead(nn.Module):
                         nn.GELU(),
                     ]
                 )
-            layers.append(nn.Linear(hidden_dim, out_dim))
             self.mlp = nn.Sequential(*layers)
+            self.last_layer = nn.Linear(hidden_dim, out_dim)
         self.apply(init_linear)
 
     def forward(self, x):
         x = self.mlp(x)
+        x = self.last_layer(x)
         return x
 
 
@@ -379,6 +381,33 @@ class ClassificationNetwork(nn.Module):
         x = self.backbone(x)
         x = self.head(x)
         return x
+
+
+def build_classification_network(
+    network_state_path: str | Path | None = None,
+    backbone_state_path: str | Path | None = None,
+    **kwargs,
+) -> ClassificationNetwork:
+    backbone = build_backbone(backbone_state_path)
+    classifier = ClassificationNetwork(backbone=backbone, **kwargs)
+    if network_state_path is None:
+        return classifier
+    network_state_path = Path(network_state_path)
+    if network_state_path.is_file():
+        net_state = torch.load(
+            f=network_state_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+        strict = True
+        if classifier.num_classes != net_state["last_layer.bias"].numel():
+            net_state.pop("last_layer.bias")
+            net_state.pop("last_layer.weight")
+            strict = False
+        classifier.load_state_dict(state_dict=net_state, strict=strict)
+        return classifier
+    torch.save(classifier.state_dict(), network_state_path)
+    return classifier
 
 
 class MultiValueClassificationLoss(nn.Module):
