@@ -41,10 +41,7 @@ def _get_models(device, args):
     # Teacher network
     teacher = models.build_projection_network(
         network_cls=models.SingleHeadProjectionNetwork,
-        network_state_path=(args.start_points_dir / "ssl_teacher_net.pth"),
-        backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
         projection_dim=args.projection_dim,
-        head_norm_last_layer=True,
     )
     teacher_nparams = utils.get_num_parameters(teacher)
     print(f"Teacher net # params: {teacher_nparams:,d}")
