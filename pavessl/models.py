@@ -395,5 +395,5 @@ class MultiValueClassificationLoss(nn.Module):
             reduction="none",
         )
         bce = bce.mul_(mask)
-        loss = bce.sum(dim=-1).mul_(weights).div_(mask.sum(dim=-1)).mean()
+        loss = bce.sum(dim=-1).mul_(weights).mean()
         return loss
