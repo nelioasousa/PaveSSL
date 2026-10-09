@@ -4,7 +4,6 @@ import pickle
 import time
 
 import numpy as np
-import torch
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
@@ -58,18 +57,9 @@ def _get_classifier(num_classes, device, args):
     return classifier.to(device=device, non_blocking=True)
 
 
-def _get_loss_function(device):
+def _get_loss_function(device, args):
     loss_fn = models.MultiValueClassificationLoss()
     return loss_fn.to(device=device, non_blocking=True)
-
-
-def _get_optimizer(model, args):
-    params_groups = utils.get_params_groups(model)
-    if args.optim == "adamw":
-        return torch.optim.AdamW(params_groups)
-    if args.optim == "sgd":
-        return torch.optim.SGD(params_groups, momentum=0.9)
-    raise ValueError(f'Optimizer "{args.optim}" not supported')
 
 
 def _train_one_epoch(
@@ -164,22 +154,27 @@ def _eval(model, header, args):
     )
 
 
-def _pretrain(args):
+def _pretrain(
+    args,
+    get_loss_fn=_get_loss_function,
+    get_classifier=_get_classifier,
+    get_train_data_loader=_get_train_data_loader,
+):
     utils.set_random_seeds(42)
     stored_args = _check_run(args)
     device = utils.get_device()
     # Data
-    train_loader = _get_train_data_loader(stored_args)
+    train_loader = get_train_data_loader(stored_args)
     # Classifier
-    classifier = _get_classifier(
+    classifier = get_classifier(
         len(train_loader.dataset.classes),
         device,
         stored_args,
     )
     # Loss function
-    loss_fn = _get_loss_function(device)
+    loss_fn = get_loss_fn(device, stored_args)
     # Optimizer
-    optimizer = _get_optimizer(classifier, stored_args)
+    optimizer = models.get_optimizer(classifier, stored_args.optim)
     # Resume training
     vars_to_restore = {
         "epoch": 0,
@@ -207,14 +202,14 @@ def _pretrain(args):
             raise ValueError(f'Directory "{args.results_dir}" already in use.')
         _save_args(args)
         # Re-build with the new arguments
-        train_loader = _get_train_data_loader(args)
+        train_loader = get_train_data_loader(args)
         if classifier.num_classes != len(train_loader.dataset.classes):
             raise ValueError(
                 f"Number of classes changed from {classifier.num_classes} "
                 f"to {len(train_loader.dataset.classes)}"
             )
-        loss_fn = _get_loss_function(device)
-        optimizer = _get_optimizer(classifier, args)
+        loss_fn = get_loss_fn(device, args)
+        optimizer = models.get_optimizer(classifier, args.optim)
         # Unset run variables
         vars_to_restore["epoch"] = 0
         vars_to_restore["loss_history"] = None
@@ -330,23 +325,28 @@ def _pretrain(args):
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
-    args.lr = 1e-3 if args.lr is None else args.lr
-    args.lr_end = 1e-5 if args.lr_end is None else args.lr_end
-    args = utils.check_data_args(args)
     args = utils.check_training_args(args)
     return args
 
 
-def get_args_parser():
+def get_args_parser(
+    save_dir_default: str | None = "data/results/sup_pretrain",
+    save_folder_default: str | None = None,
+):
     parser = argparse.ArgumentParser(
         description=(
             "Supervised backbone pre-training using multi-value classification."
         ),
     )
-    # Data arguments
-    parser = utils.add_data_args(parser, "sup_pretrain")
-    # Training arguments
-    parser = utils.add_training_args(parser)
+    # Data and training arguments
+    parser = utils.add_data_arg(parser)
+    parser = utils.add_training_args(
+        parser=parser,
+        save_dir_default=save_dir_default,
+        save_folder_default=save_folder_default,
+        lr_default=1e-3,
+        lr_end_default=1e-5,
+    )
     # Input transformation
     parser.add_argument(
         "--image-size",

@@ -1,10 +1,37 @@
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
 import torchvision
 from torch import nn
 from torch.nn import functional as F
+
+
+def get_params_groups(model: nn.Module):
+    regularize = []
+    dont_regularize = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        # Biases and Norm parameters are not regularized
+        if name.endswith(".bias") or len(param.shape) == 1:
+            dont_regularize.append(param)
+        else:
+            regularize.append(param)
+    return [
+        {"params": regularize},
+        {"params": dont_regularize, "weight_decay": 0.0},
+    ]
+
+
+def get_optimizer(target_model: nn.Module, which: Literal["adamw", "sgd"]):
+    params_groups = get_params_groups(target_model)
+    if which == "adamw":
+        return torch.optim.AdamW(params_groups)
+    if which == "sgd":
+        return torch.optim.SGD(params_groups, momentum=0.9)
+    raise ValueError(f'Optimizer "{which}" not supported')
 
 
 @torch.inference_mode()

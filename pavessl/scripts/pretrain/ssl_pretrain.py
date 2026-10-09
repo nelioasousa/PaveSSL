@@ -97,15 +97,6 @@ def _get_loss_function(device, args):
     return loss_fn.to(device=device, non_blocking=True)
 
 
-def _get_optimizer(model, args):
-    params_groups = utils.get_params_groups(model)
-    if args.optim == "adamw":
-        return torch.optim.AdamW(params_groups)
-    if args.optim == "sgd":
-        return torch.optim.SGD(params_groups, momentum=0.9)
-    raise ValueError(f'Optimizer "{args.optim}" not supported')
-
-
 def _train_one_epoch(
     student,
     teacher,
@@ -223,7 +214,7 @@ def _pretrain(args):
     # Loss function
     loss_fn = _get_loss_function(device, stored_args)
     # Optimizer
-    optimizer = _get_optimizer(student, stored_args)
+    optimizer = models.get_optimizer(student, stored_args.optim)
     # Resume training
     vars_to_restore = {
         "epoch": 0,
@@ -260,7 +251,7 @@ def _pretrain(args):
         # Re-build with the new arguments
         train_loader = _get_train_data_loader(args)
         loss_fn = _get_loss_function(device, args)
-        optimizer = _get_optimizer(student, args)
+        optimizer = models.get_optimizer(student, args.optim)
         # Unset run variables
         vars_to_restore["epoch"] = 0
         vars_to_restore["loss_history"] = None
@@ -391,9 +382,6 @@ def _pretrain(args):
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
-    args.lr = 5e-4 if args.lr is None else args.lr
-    args.lr_end = 1e-6 if args.lr_end is None else args.lr_end
-    args = utils.check_data_args(args)
     args = utils.check_training_args(args)
     if args.disable_warmups:
         args.teacher_temp_warmup_size = 0
@@ -454,10 +442,14 @@ def get_args_parser():
             "using DINOv1 with multi-task heads."
         ),
     )
-    # Data arguments
-    parser = utils.add_data_args(parser, "ssl_pretrain")
-    # Training arguments
-    parser = utils.add_training_args(parser)
+    # Data and training arguments
+    parser = utils.add_data_arg(parser)
+    parser = utils.add_training_args(
+        parser=parser,
+        save_dir_default="data/results/ssl_pretrain",
+        lr_default=5e-4,
+        lr_end_default=1e-6,
+    )
     # Architecture
     parser.add_argument(
         "--projection-dim",

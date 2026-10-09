@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from numbers import Real
 from pathlib import Path
 from shutil import copy2, rmtree
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -20,23 +20,6 @@ def set_random_seeds(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
-
-
-def get_params_groups(model: torch.nn.Module):
-    regularize = []
-    dont_regularize = []
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        # Biases and Norm parameters are not regularized
-        if name.endswith(".bias") or len(param.shape) == 1:
-            dont_regularize.append(param)
-        else:
-            regularize.append(param)
-    return [
-        {"params": regularize},
-        {"params": dont_regularize, "weight_decay": 0.0},
-    ]
 
 
 def get_num_parameters(model: torch.nn.Module):
@@ -262,9 +245,8 @@ class MetricLogger:
         )
 
 
-def add_data_args(
+def add_data_arg(
     parser: argparse.ArgumentParser,
-    results_folder: str,
 ) -> argparse.ArgumentParser:
     parser.add_argument(
         "--data",
@@ -275,28 +257,44 @@ def add_data_args(
             "See 'prepare-data' command for more information."
         ),
     )
-    parser.add_argument(
-        "--sources-subset",
-        choices=[1, 2, 3, 4],
-        type=int,
-        default=1,
-        help="Which RDD2022 source subset to use for training.",
-    )
+    return parser
+
+
+def add_training_args(
+    parser: argparse.ArgumentParser,
+    save_dir_default: str | None = None,
+    save_folder_default: str | None = None,
+    sources_subset_default: int = 1,
+    epochs_default: int = 150,
+    batch_size_default: int = 8,
+    lr_default: float = 1e-4,
+    lr_end_default: float = 1e-6,
+    lr_warmup_size_default: int = 10,
+    weight_decay_default: float = 0.04,
+    weight_decay_end_default: float = 0.4,
+    optim_default: Literal["adamw", "sgd"] = "adamw",
+    validation_freq_default: int = 1,
+    checkpoint_freq_default: int = 10,
+) -> argparse.ArgumentParser:
     parser.add_argument(
         "--save-dir",
         type=Path,
-        default=Path(f"data/results/{results_folder}"),
+        required=(save_dir_default is None),
         help="Central/parent directory for saving experiments.",
     )
+    if save_dir_default is not None:
+        parser.set_defaults(save_dir=save_dir_default)
     parser.add_argument(
         "--save-folder",
         type=str,
-        required=True,
+        required=(save_folder_default is None),
         help=(
             "Experiment save folder. "
             "The experiment results are saved in '--save-dir/--save-folder'."
         ),
     )
+    if save_folder_default is not None:
+        parser.set_defaults(save_folder=save_folder_default)
     parser.add_argument(
         "--clear",
         action="store_true",
@@ -306,75 +304,60 @@ def add_data_args(
         ),
     )
     parser.add_argument(
-        "--start-points-dir",
-        type=Path,
-        default=Path("data/results/start_points"),
-        help=(
-            "Directory where to look for start-point checkpoints "
-            "(model states) for common initialization of models."
-        ),
+        "--sources-subset",
+        choices=[0, 1, 2, 3, 4],
+        type=int,
+        default=sources_subset_default,
+        help="Which RDD2022 source subset to use for training.",
     )
-    return parser
-
-
-def check_data_args(args: argparse.Namespace) -> argparse.Namespace:
-    args.results_dir = args.save_dir / args.save_folder
-    args.results_dir.mkdir(exist_ok=True, parents=True)
-    args.start_points_dir.mkdir(exist_ok=True, parents=True)
-    if args.clear:
-        for item in args.results_dir.iterdir():
-            if item.is_file():
-                item.unlink()
-            if item.is_dir():
-                rmtree(item)
-    args.sources = get_rdd2022_sources(args.sources_subset)
-    return args
-
-
-def add_training_args(
-    parser: argparse.ArgumentParser,
-) -> argparse.ArgumentParser:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
+        default=epochs_default,
         help="Number of training epochs.",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=32,
+        default=batch_size_default,
         help="Number of images per training step (batch size).",
     )
     parser.add_argument(
         "--lr",
         type=float,
-        default=None,
+        default=lr_default,
         help="Learning rate start value (cosine annealing).",
     )
     parser.add_argument(
         "--lr-end",
         type=float,
-        default=None,
+        default=lr_end_default,
         help="Learning rate end value (cosine annealing).",
     )
     parser.add_argument(
         "--lr-warmup-size",
         type=int,
-        default=10,
+        default=lr_warmup_size_default,
         help="Learning rate warmup period size in epochs.",
     )
     parser.add_argument(
         "--weight-decay",
         type=float,
-        default=0.04,
+        default=weight_decay_default,
         help="Weight decay start value (cosine annealing).",
     )
     parser.add_argument(
         "--weight-decay-end",
         type=float,
-        default=0.4,
+        default=weight_decay_end_default,
         help="Weight decay end value (cosine annealing).",
+    )
+    parser.add_argument(
+        "--optim",
+        type=str,
+        choices=["adamw", "sgd"],
+        default=optim_default,
+        help="Which optimizer to use.",
     )
     parser.add_argument(
         "--disable-warmups",
@@ -388,13 +371,6 @@ def add_training_args(
             "Disable cosine annealing (lr and weight decay). "
             "Values are kept constant during no-warmup epochs."
         ),
-    )
-    parser.add_argument(
-        "--optim",
-        type=str,
-        choices=["adamw", "sgd"],
-        default="adamw",
-        help="Which optimizer to use.",
     )
     parser.add_argument(
         "--increment",
@@ -413,13 +389,13 @@ def add_training_args(
     parser.add_argument(
         "--validation-freq",
         type=int,
-        default=1,
+        default=validation_freq_default,
         help="Validation evaluation frequency in epochs.",
     )
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
-        default=5,
+        default=checkpoint_freq_default,
         help="Training state persistency (checkpointing) frequency in epochs.",
     )
     parser.add_argument(
@@ -428,12 +404,34 @@ def add_training_args(
         default=4,
         help="Number of workers for data loading.",
     )
+    parser.add_argument(
+        "--start-points-dir",
+        type=Path,
+        default=Path("data/results/start_points"),
+        help=(
+            "Directory where to look for start-point checkpoints "
+            "(model states) for common initialization of models."
+        ),
+    )
     return parser
 
 
 def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.results_dir = args.save_dir / args.save_folder
+    args.results_dir.mkdir(exist_ok=True, parents=True)
+    args.start_points_dir.mkdir(exist_ok=True, parents=True)
+    if args.clear:
+        for item in args.results_dir.iterdir():
+            if item.is_file():
+                item.unlink()
+            if item.is_dir():
+                rmtree(item)
+    args.sources = get_rdd2022_sources(args.sources_subset)
     args.epochs = max(1, args.epochs)
     args.batch_size = max(1, args.batch_size)
+    args.validation_freq = (
+        args.validation_freq if args.validation_freq > 0 else (args.epochs - 1)
+    )
     args.checkpoint_freq = (
         args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
     )
