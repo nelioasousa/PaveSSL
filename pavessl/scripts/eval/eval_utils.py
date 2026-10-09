@@ -8,10 +8,10 @@ from pavessl import models
 
 
 def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
-    # Data
-    parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
+    parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
+    parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
     parser.add_argument(
-        "--target-source",
+        "--eval-target-source",
         choices=[
             "China_Drone",
             "China_MotorBike",
@@ -24,11 +24,8 @@ def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
         type=str,
         default="India",
     )
-    # Target and save location
-    parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
-    parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
-    parser.add_argument("--save-folder", type=str, default="evals")
-    parser.add_argument("--save-file", type=str, default=save_csv_name)
+    parser.add_argument("--eval-save-folder", type=str, default="evals")
+    parser.add_argument("--eval-save-file", type=str, default=save_csv_name)
     return parser
 
 

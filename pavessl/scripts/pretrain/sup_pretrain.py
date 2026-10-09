@@ -133,11 +133,11 @@ def _eval(model, header, args):
         model=model.backbone,
         data_path=args.data,
         target_sources=args.sources,
-        ks=args.eval_ks,
-        distance_temperature=args.eval_dist_temperature,
-        pred_threshold=args.eval_pred_threshold,
-        crops_target_size=args.eval_crops_target_size,
-        crops_overlap=args.eval_crops_overlap,
+        ks=args.knn_ks,
+        distance_temperature=args.knn_dist_temperature,
+        pred_threshold=args.knn_pred_threshold,
+        crops_target_size=args.knn_crops_target_size,
+        crops_overlap=args.knn_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         key_split="train",
@@ -148,13 +148,13 @@ def _eval(model, header, args):
         [
             eval_results[source][metric][i]
             for source in args.sources
-            for i in range(len(args.eval_ks))
-            for metric in args.eval_metrics
+            for i in range(len(args.knn_ks))
+            for metric in args.knn_metrics
         ]
     )
 
 
-def _pretrain(
+def pretrain(
     args,
     get_loss_fn=_get_loss_function,
     get_classifier=_get_classifier,
@@ -225,7 +225,7 @@ def _pretrain(
         if vars_to_restore["loss_history"] is None
         else vars_to_restore["loss_history"]
     )
-    num_metrics = len(args.sources) * len(args.eval_ks) * len(args.eval_metrics)
+    num_metrics = len(args.sources) * len(args.knn_ks) * len(args.knn_metrics)
     valid_history = (
         np.zeros(
             (
@@ -308,8 +308,8 @@ def _pretrain(
         [
             f"{source}__{k}__{metric}"
             for source in args.sources
-            for k in args.eval_ks
-            for metric in args.eval_metrics
+            for k in args.knn_ks
+            for metric in args.knn_metrics
         ]
     )
     np.savetxt(
@@ -322,6 +322,7 @@ def _pretrain(
     )
     train_duration = int(time.monotonic() - start_time)
     print(f"Training ended in {utils.get_time_string(train_duration)}!")
+    return classifier
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -329,10 +330,7 @@ def check_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def get_args_parser(
-    save_dir_default: str | None = "data/results/sup_pretrain",
-    save_folder_default: str | None = None,
-):
+def get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
             "Supervised backbone pre-training using multi-value classification."
@@ -342,8 +340,7 @@ def get_args_parser(
     parser = utils.add_data_arg(parser)
     parser = utils.add_training_args(
         parser=parser,
-        save_dir_default=save_dir_default,
-        save_folder_default=save_folder_default,
+        save_dir_default="data/results/sup_pretrain",
         lr_default=1e-3,
         lr_end_default=1e-5,
     )
@@ -362,7 +359,7 @@ def get_args_parser(
         help="Min-max area range for image cropping.",
     )
     # kNN evaluation arguments
-    parser = utils.add_knn_eval_args(parser, prefix="eval-")
+    parser = utils.add_knn_eval_args(parser, prefix="knn-")
     return parser
 
 
@@ -370,7 +367,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        _pretrain(check_args(args))
+        pretrain(check_args(args))
         return 0
     except Exception:
         import traceback

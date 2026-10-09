@@ -233,7 +233,7 @@ def _main(args):
     results = knn_eval_one(
         model=backbone,
         data_path=args.data,
-        target_source=args.target_source,
+        target_source=args.eval_target_source,
         ks=args.ks,
         distance_temperature=args.dist_temperature,
         pred_threshold=args.pred_threshold,
@@ -255,11 +255,9 @@ def get_args_parser():
     parser = argparse.ArgumentParser(
         description="Run k-NN evaluation on a pretrained backbone.",
     )
-    # Eval args
+    parser = utils.add_data_arg(parser)
     parser = eval_utils.add_eval_args(parser, "knn_eval.csv")
-    # k-NN specific
     parser = utils.add_knn_eval_args(parser)
-    # Others
     parser.add_argument("--use-cpu", action="store_true")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)

@@ -182,11 +182,11 @@ def _eval(model, header, args):
         model=model.backbone,
         data_path=args.data,
         target_sources=args.sources,
-        ks=args.eval_ks,
-        distance_temperature=args.eval_dist_temperature,
-        pred_threshold=args.eval_pred_threshold,
-        crops_target_size=args.eval_crops_target_size,
-        crops_overlap=args.eval_crops_overlap,
+        ks=args.knn_ks,
+        distance_temperature=args.knn_dist_temperature,
+        pred_threshold=args.knn_pred_threshold,
+        crops_target_size=args.knn_crops_target_size,
+        crops_overlap=args.knn_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         key_split="train",
@@ -197,8 +197,8 @@ def _eval(model, header, args):
         [
             eval_results[source][metric][i]
             for source in args.sources
-            for i in range(len(args.eval_ks))
-            for metric in args.eval_metrics
+            for i in range(len(args.knn_ks))
+            for metric in args.knn_metrics
         ]
     )
 
@@ -267,7 +267,7 @@ def _pretrain(args):
         if vars_to_restore["loss_history"] is None
         else vars_to_restore["loss_history"]
     )
-    num_metrics = len(args.sources) * len(args.eval_ks) * len(args.eval_metrics)
+    num_metrics = len(args.sources) * len(args.knn_ks) * len(args.knn_metrics)
     valid_history = (
         np.zeros(
             (
@@ -365,8 +365,8 @@ def _pretrain(args):
             f"{model}__{source}__{k}__{metric}"
             for model in ("student", "teacher")
             for source in args.sources
-            for k in args.eval_ks
-            for metric in args.eval_metrics
+            for k in args.knn_ks
+            for metric in args.knn_metrics
         ]
     )
     np.savetxt(
@@ -505,7 +505,7 @@ def get_args_parser():
     # Multi-view arguments
     parser = add_multiview_args(parser)
     # kNN evaluation arguments
-    parser = utils.add_knn_eval_args(parser, prefix="eval-")
+    parser = utils.add_knn_eval_args(parser, prefix="knn-")
     return parser
 
 
