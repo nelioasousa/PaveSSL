@@ -1,27 +1,23 @@
 import argparse
-import pickle
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
-import torchvision
 from torch.utils.data import DataLoader
 
-from pavessl.data import RDD2022, FourPointCrops, get_rdd2022_sources
-from pavessl.utils import MetricLogger, add_knn_eval_args
+from pavessl import data, models, utils
 
 
-def load_resnet50_backbone(state_file: Path, checkpoint_key: str | None = None):
-    backbone = torchvision.models.resnet50()
-    backbone.fc = torch.nn.Identity()
+def load_backbone(state_file: Path, checkpoint_key: str):
+    backbone = models.build_backbone(None)
     state_dict = torch.load(state_file, map_location="cpu", weights_only=False)
-    if checkpoint_key is not None:
-        state_dict = {
-            key[9:]: state
-            for key, state in state_dict[checkpoint_key].items()
-            if key.startswith("backbone.")
-        }
-    backbone.load_state_dict(state_dict)
+    state_dict = {
+        key[9:]: state_tensor
+        for key, state_tensor in state_dict[checkpoint_key].items()
+        if key.startswith("backbone.")
+    }
+    backbone.load_state_dict(state_dict, strict=True)
     return backbone
 
 
@@ -32,7 +28,7 @@ def _compute_features(
     num_workers: int,
     header: str = "",
 ):
-    metric_logger = MetricLogger(delimiter="  ")
+    metric_logger = utils.MetricLogger(delimiter="  ")
     device = next(model.parameters()).device
     data_loader = DataLoader(
         dataset=dataset,
@@ -82,7 +78,7 @@ def _compute_features(
     return features, labels
 
 
-def _get_feature_similarities_and_labels(
+def _get_feature_similarities_and_values(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
@@ -90,57 +86,94 @@ def _get_feature_similarities_and_labels(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
+    key_split: Literal["train", "valid", "test"] = "train",
+    query_split: Literal["train", "valid", "test"] = "valid",
     header: str = "",
 ):
-    transform = FourPointCrops(size=crops_target_size, overlap=crops_overlap)
-    dataset = RDD2022(
-        data_path=data_path,
-        sources=[target_source],
-        split="train",
-        task="classification",
-        transform=transform,
-    )
-    train_features, train_labels = _compute_features(
+    transform = data.FourPointCrops(crops_target_size, crops_overlap)
+    key_features, key_values = _compute_features(
         model=model,
-        dataset=dataset,
+        dataset=data.RDD2022(
+            data_path=data_path,
+            sources=[target_source],
+            split=key_split,
+            task="classification",
+            transform=transform,
+        ),
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"{header}{' ' if header else ''}[{target_source}: train split]",
+        header=(
+            f"{header}{' ' if header else ''}"
+            f"[{target_source}: {key_split} split]"
+        ),
     )
-    dataset = RDD2022(
-        data_path=data_path,
-        sources=[target_source],
-        split="valid",
-        task="classification",
-        transform=transform,
-    )
-    valid_features, valid_labels = _compute_features(
+    query_features, target_values = _compute_features(
         model=model,
-        dataset=dataset,
+        dataset=data.RDD2022(
+            data_path=data_path,
+            sources=[target_source],
+            split=query_split,
+            task="classification",
+            transform=transform,
+        ),
         batch_size=batch_size,
         num_workers=num_workers,
-        header=f"{header}{' ' if header else ''}[{target_source}: valid split]",
+        header=(
+            f"{header}{' ' if header else ''}"
+            f"[{target_source}: {query_split} split]"
+        ),
     )
-    similarities = torch.mm(valid_features, train_features.t())
-    return similarities, train_labels, valid_labels
+    similarities = torch.mm(query_features, key_features.t())
+    return similarities, key_values, target_values
+
+
+def _compute_metrics(preds: np.ndarray, targets: np.ndarray):
+    counts = targets.sum(axis=0)
+    tps = (preds * targets).sum(axis=0)
+    tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
+    accuracy = (tps + tns) / len(targets)
+    sensitivity = tps / counts
+    specificity = tns / (len(targets) - counts)
+    class_weights = counts / counts.sum()
+    macro_accuracy = accuracy.mean().item()
+    weighted_accuracy = (accuracy * class_weights).sum().item()
+    balanced_accuracy = sensitivity.mean().item()
+    macro_sensitivity = balanced_accuracy
+    weighted_sensitivity = (sensitivity * class_weights).sum().item()
+    macro_specificity = specificity.mean().item()
+    weighted_specificity = (specificity * class_weights).sum().item()
+    return {
+        "accuracy": accuracy,
+        "sensitivity": sensitivity,
+        "specificity": specificity,
+        "macro_accuracy": macro_accuracy,
+        "weighted_accuracy": weighted_accuracy,
+        "balanced_accuracy": balanced_accuracy,
+        "macro_sensitivity": macro_sensitivity,
+        "weighted_sensitivity": weighted_sensitivity,
+        "macro_specificity": macro_specificity,
+        "weighted_specificity": weighted_specificity,
+    }
 
 
 @torch.inference_mode()
 def knn_eval_one(
     model: torch.nn.Module,
-    ks: list[int],
-    temperature: float,
     data_path: Path,
     target_source: str,
+    ks: list[int],
+    distance_temperature: float,
+    pred_threshold: float,
     crops_target_size: int,
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    threshold: float,
+    key_split: Literal["train", "valid", "test"] = "train",
+    query_split: Literal["train", "valid", "test"] = "valid",
     logging_header: str = "",
 ):
     max_k = max(ks)
-    similarities_and_labels = _get_feature_similarities_and_labels(
+    similarities_and_values = _get_feature_similarities_and_values(
         model=model,
         data_path=data_path,
         target_source=target_source,
@@ -148,126 +181,146 @@ def knn_eval_one(
         crops_overlap=crops_overlap,
         batch_size=batch_size,
         num_workers=num_workers,
+        key_split=key_split,
+        query_split=query_split,
         header=logging_header,
     )
-    similarities, train_labels, valid_labels = similarities_and_labels
+    similarities, key_values, target_values = similarities_and_values
     similarities, idxs = similarities.topk(
         k=max_k,
         dim=-1,
         largest=True,
         sorted=True,
     )
-    closest_labels = train_labels.new_empty((*valid_labels.shape, max_k))
+    closest_values = key_values.new_empty((*target_values.shape, max_k))
     for i in range(max_k):
-        closest_labels[..., i].copy_(train_labels[idxs[:, i]])
-    similarities.div_(temperature).exp_().unsqueeze_(dim=1)
-    closest_labels.mul_(similarities)
-    counts = valid_labels.sum(dim=0, keepdim=True)
-    accuracy = np.empty((len(ks), valid_labels.shape[-1]), dtype=np.float32)
+        closest_values[..., i].copy_(key_values[idxs[:, i]])
+    similarities.div_(distance_temperature).exp_().unsqueeze_(dim=1)
+    closest_values.mul_(similarities)
+    accuracy = np.empty((len(ks), target_values.shape[-1]), dtype=np.float32)
+    macro_accuracy = np.empty(len(ks), dtype=np.float32)
     results = {
         "accuracy": accuracy,
         "sensitivity": np.empty_like(accuracy),
         "specificity": np.empty_like(accuracy),
+        "macro_accuracy": macro_accuracy,
+        "weighted_accuracy": np.empty_like(macro_accuracy),
+        "balanced_accuracy": np.empty_like(macro_accuracy),
+        "macro_sensitivity": np.empty_like(macro_accuracy),
+        "weighted_sensitivity": np.empty_like(macro_accuracy),
+        "macro_specificity": np.empty_like(macro_accuracy),
+        "weighted_specificity": np.empty_like(macro_accuracy),
     }
     for i, k_value in enumerate(ks):
-        probs = closest_labels[..., :k_value].sum(dim=-1)
+        probs = closest_values[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
-        preds = torch.where(probs > threshold, 1.0, 0.0)
-        tps = preds.mul(valid_labels).sum(dim=0)
-        tns = (1.0 - preds).mul(1.0 - valid_labels).sum(dim=0)
-        results["accuracy"][i] = ((tps + tns) / len(valid_labels)).cpu().numpy()
-        results["sensitivity"][i] = (tps / counts).cpu().numpy()
-        results["specificity"][i] = (
-            (tns / (len(valid_labels) - counts)).cpu().numpy()
+        preds = torch.where(probs > pred_threshold, 1.0, 0.0)
+        metrics = _compute_metrics(
+            preds=preds.cpu().numpy(),
+            targets=target_values.cpu().numpy(),
         )
+        for metric, values in metrics.items():
+            results[metric][i] = values
     return results
 
 
-def knn_eval(
+def knn_eval_all(
     model: torch.nn.Module,
+    data_path: Path,
+    target_sources: list[str],
     ks: list[int],
     distance_temperature: float,
     pred_threshold: float,
-    data_path: Path,
-    target_sources: list[str],
     crops_target_size: int,
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    simplified: bool = False,
+    key_split: Literal["train", "valid", "test"] = "train",
+    query_split: Literal["train", "valid", "test"] = "valid",
     logging_header: str = "",
 ):
-    results = {}
-    for source in target_sources:
-        source_rsts = knn_eval_one(
+    return {
+        source: knn_eval_one(
             model=model,
-            ks=ks,
-            temperature=distance_temperature,
             data_path=data_path,
             target_source=source,
+            ks=ks,
+            distance_temperature=distance_temperature,
+            pred_threshold=pred_threshold,
             crops_target_size=crops_target_size,
             crops_overlap=crops_overlap,
             batch_size=batch_size,
             num_workers=num_workers,
-            threshold=pred_threshold,
+            key_split=key_split,
+            query_split=query_split,
             logging_header=logging_header,
         )
-        if simplified:
-            results[source] = {
-                metric: values.mean(axis=1)
-                for metric, values in source_rsts.items()
-            }
-        else:
-            results[source] = source_rsts
-    return results
+        for source in target_sources
+    }
 
 
 def _main(args):
-    backbone = load_resnet50_backbone(args.backbone, args.checkpoint_key)
-    device = torch.device(
-        torch.cuda.current_device()
-        if args.use_cuda and torch.cuda.is_available()
-        else "cpu"
+    backbone = load_backbone(
+        state_file=(args.experiment_dir / "checkpoint.pth"),
+        checkpoint_key=args.checkpoint_key,
     )
-    backbone = backbone.to(device=device)
-    target_sources = get_rdd2022_sources(args.sources_subset)
-    results = knn_eval(
+    device = torch.device(
+        "cpu"
+        if args.use_cpu or not torch.cuda.is_available()
+        else torch.cuda.current_device()
+    )
+    backbone = backbone.to(device=device, non_blocking=True)
+    results = knn_eval_one(
         model=backbone,
+        data_path=args.data,
+        target_source=args.target_source,
         ks=args.ks,
         distance_temperature=args.dist_temperature,
         pred_threshold=args.pred_threshold,
-        data_path=args.data,
-        target_sources=target_sources,
         crops_target_size=args.crops_target_size,
         crops_overlap=args.crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        key_split="train",
+        query_split="test",
+        logging_header="(Backbone kNN Eval)",
     )
-    with open(args.save_file, mode="wb") as f:
-        pickle.dump(obj=results, file=f, protocol=5)
+    # Save results
+    for metric, values in results.items():
+        print(f"{metric=}:")
+        print(values, end="\n\n")
 
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
-        description="Run k-NN evaluation on a pretrained backbone."
+        description="Run k-NN evaluation on a pretrained backbone.",
     )
-    # Backbone location
-    parser.add_argument("-bk", "--backbone", type=Path, required=True)
-    parser.add_argument("-ck", "--checkpoint-key", type=str, default=None)
-    # Data and save locations
+    # Checkpoint location and save location
+    parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
+    parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
+    parser.add_argument("--save-folder", type=str, default="evals")
+    parser.add_argument("--save-file", type=str, default="knn_eval.csv")
+    # Data
     parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
-    parser.add_argument("--save-file", type=Path, required=True)
     parser.add_argument(
-        "--sources-subset",
-        choices=[1, 2, 3],
-        type=int,
-        default=3,
+        "--target-source",
+        choices=[
+            "China_Drone",
+            "China_MotorBike",
+            "Czech",
+            "India",
+            "Japan",
+            "Norway",
+            "United_States",
+        ],
+        type=str,
+        default="India",
     )
     # k-NN specific
-    parser = add_knn_eval_args(parser)
+    parser = utils.add_knn_eval_args(parser)
     # Others
-    parser.add_argument("--use-cuda", action="store_true")
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--use-cpu", action="store_true")
+    parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)
     return parser
 

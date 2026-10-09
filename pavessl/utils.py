@@ -476,15 +476,31 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
     parser.add_argument(
         f"--{prefix}pred-threshold",
         type=float,
-        default=0.5,
+        default=0.3,
         help="Threshold for kNN prediction.",
     )
     parser.add_argument(
         f"--{prefix}metrics",
         type=str,
         nargs="+",
-        choices=["accuracy", "sensitivity", "specificity"],
-        default=["accuracy", "sensitivity", "specificity"],
+        choices=[
+            "macro_accuracy",
+            "weighted_accuracy",
+            "balanced_accuracy",
+            "macro_sensitivity",
+            "weighted_sensitivity",
+            "macro_specificity",
+            "weighted_specificity",
+        ],
+        default=[
+            "macro_accuracy",
+            "weighted_accuracy",
+            "balanced_accuracy",
+            "macro_sensitivity",
+            "weighted_sensitivity",
+            "macro_specificity",
+            "weighted_specificity",
+        ],
         help="Select 1+ of the available kNN evaluation metrics.",
     )
     return parser

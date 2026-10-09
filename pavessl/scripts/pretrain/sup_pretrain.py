@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from pavessl import models, utils
 from pavessl.data import RDD2022, get_augmentation
-from pavessl.scripts.eval.knn_eval import knn_eval
+from pavessl.scripts.eval.knn_eval import knn_eval_all
 
 
 def _save_args(args):
@@ -139,18 +139,19 @@ def _train_one_epoch(
 
 def _eval(model, header, args):
     model.eval()
-    eval_results = knn_eval(
+    eval_results = knn_eval_all(
         model=model.backbone,
+        data_path=args.data,
+        target_sources=args.sources,
         ks=args.eval_ks,
         distance_temperature=args.eval_dist_temperature,
         pred_threshold=args.eval_pred_threshold,
-        data_path=args.data,
-        target_sources=args.sources,
         crops_target_size=args.eval_crops_target_size,
         crops_overlap=args.eval_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        simplified=True,
+        key_split="train",
+        query_split="valid",
         logging_header=header,
     )
     return np.array(
