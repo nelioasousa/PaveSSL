@@ -163,19 +163,16 @@ def pretrain(
     utils.set_random_seeds(42)
     stored_args = _check_run(args)
     device = utils.get_device()
-    # Data
+    # Previous/stored constructs
     train_loader = get_train_data_loader(stored_args)
-    # Classifier
     classifier = get_classifier(
         len(train_loader.dataset.classes),
         device,
         stored_args,
     )
-    # Loss function
     loss_fn = get_loss_fn(device, stored_args)
-    # Optimizer
     optimizer = models.get_optimizer(classifier, stored_args.optim)
-    # Resume training
+    # Restore training vars if any
     vars_to_restore = {
         "epoch": 0,
         "loss_history": None,
@@ -185,11 +182,13 @@ def pretrain(
         ckp_path=(stored_args.results_dir / "checkpoint.pth"),
         run_variables=vars_to_restore,
         classifier=classifier,
-        loss=loss_fn,
+        loss_fn=loss_fn,
         optimizer=optimizer,
     )
     # Check run state
-    if vars_to_restore["epoch"] == stored_args.epochs:
+    if stored_args is args:
+        pass
+    elif vars_to_restore["epoch"] == stored_args.epochs:
         if not args.increment:
             print(f'Training at "{stored_args.results_dir}" already finished.')
             print("Use --increment to increment upon this training run.")
@@ -203,6 +202,7 @@ def pretrain(
         _save_args(args)
         # Re-build with the new arguments
         train_loader = get_train_data_loader(args)
+        ## Check number of classes mismatch
         if classifier.num_classes != len(train_loader.dataset.classes):
             raise ValueError(
                 f"Number of classes changed from {classifier.num_classes} "
@@ -215,11 +215,14 @@ def pretrain(
         vars_to_restore["loss_history"] = None
         vars_to_restore["valid_history"] = None
     else:
-        if vars_to_restore["epoch"]:
-            print("Run arguments restored. Continuing training...")
+        print(
+            "Run arguments restored.\n"
+            "Ignoring any argument changes.\n"
+            "Continuing previous training run."
+        )
         args = stored_args
     print(f'Saving results in "{args.results_dir}".')
-    # Restore loss and validation histories
+    # Loss and validation histories
     loss_history = (
         np.zeros((args.epochs, 3), dtype=np.float32)
         if vars_to_restore["loss_history"] is None
@@ -283,7 +286,7 @@ def pretrain(
         if not (epoch % args.checkpoint_freq) or (epoch + 1) == args.epochs:
             states_dict = {
                 "classifier": classifier.state_dict(),
-                "loss": loss_fn.state_dict(),
+                "loss_fn": loss_fn.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch + 1,
                 "loss_history": loss_history,
@@ -359,7 +362,7 @@ def get_args_parser():
         help="Min-max area range for image cropping.",
     )
     # kNN evaluation arguments
-    parser = utils.add_knn_eval_args(parser, prefix="knn-")
+    parser = utils.add_knn_eval_args(parser)
     return parser
 
 

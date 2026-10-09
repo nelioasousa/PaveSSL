@@ -220,8 +220,8 @@ def knn_eval_all(
 
 
 def _main(args):
-    backbone = eval_utils.load_backbone(
-        state_file=(args.experiment_dir / "checkpoint.pth"),
+    backbone = eval_utils.load_experiment_backbone(
+        exp_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
     device = torch.device(
@@ -234,21 +234,21 @@ def _main(args):
         model=backbone,
         data_path=args.data,
         target_source=args.eval_target_source,
-        ks=args.ks,
-        distance_temperature=args.dist_temperature,
-        pred_threshold=args.pred_threshold,
-        crops_target_size=args.crops_target_size,
-        crops_overlap=args.crops_overlap,
+        ks=args.knn_ks,
+        distance_temperature=args.knn_dist_temperature,
+        pred_threshold=args.knn_pred_threshold,
+        crops_target_size=args.knn_crops_target_size,
+        crops_overlap=args.knn_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         key_split="train",
         query_split="test",
-        logging_header="(Backbone kNN Eval)",
+        logging_header="(kNN Eval)",
     )
     # Save results
-    for metric, values in results.items():
+    for metric in args.knn_metrics:
         print(f"{metric=}:")
-        print(values, end="\n\n")
+        print(results[metric], end="\n\n")
 
 
 def get_args_parser():

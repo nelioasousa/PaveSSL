@@ -32,7 +32,7 @@ def _get_models(device, args):
         network_cls=models.DualHeadProjectionNetwork,
         network_state_path=(args.start_points_dir / "ssl_student_net.pth"),
         backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
-        projection_dim=args.projection_dim,
+        projection_dim=args.ssl_projection_dim,
     )
     student_nparams = utils.get_num_parameters(student)
     backbone_nparams = utils.get_num_parameters(student.backbone)
@@ -41,7 +41,7 @@ def _get_models(device, args):
     # Teacher network
     teacher = models.build_projection_network(
         network_cls=models.SingleHeadProjectionNetwork,
-        projection_dim=args.projection_dim,
+        projection_dim=args.ssl_projection_dim,
     )
     teacher_nparams = utils.get_num_parameters(teacher)
     print(f"Teacher net # params: {teacher_nparams:,d}")
@@ -59,11 +59,11 @@ def _get_models(device, args):
 
 def _get_train_data_loader(args):
     multiview_trans = SSLMultiviewTransform(
-        global_size=args.global_size,
-        global_scale=args.global_scale,
-        local_size=args.local_size,
-        local_scale=args.local_scale,
-        num_local_views=args.num_local_views,
+        global_size=args.mv_global_size,
+        global_scale=args.mv_global_scale,
+        local_size=args.mv_local_size,
+        local_scale=args.mv_local_scale,
+        num_local_views=args.mv_num_local_views,
     )
     train_dataset = RDD2022(
         data_path=args.data,
@@ -85,14 +85,14 @@ def _get_train_data_loader(args):
 
 def _get_loss_function(device, args):
     loss_fn = models.SSLLoss(
-        projection_dim=args.projection_dim,
-        num_local_views=args.num_local_views,
-        teacher_temp=args.teacher_temp,
-        teacher_temp_start=args.teacher_temp_warmup_start,
-        teacher_temp_warmup=args.teacher_temp_warmup_size,
+        projection_dim=args.ssl_projection_dim,
+        num_local_views=args.mv_num_local_views,
+        teacher_temp=args.ssl_teacher_temp,
+        teacher_temp_start=args.ssl_teacher_temp_warmup_start,
+        teacher_temp_warmup=args.ssl_teacher_temp_warmup_size,
         num_epochs=args.epochs,
-        student_temp=args.student_temp,
-        center_momentum=args.center_momentum,
+        student_temp=args.ssl_student_temp,
+        center_momentum=args.ssl_center_momentum,
     )
     return loss_fn.to(device=device, non_blocking=True)
 
@@ -112,8 +112,9 @@ def _train_one_epoch(
 ):
     student.train()
     teacher.train()  # Necessary for BatchNorm updates
-    student.local_head.freeze_last_layer(epoch < args.freeze_last_layer_for)
-    student.global_head.freeze_last_layer(epoch < args.freeze_last_layer_for)
+    freeze_last_layer = epoch < args.ssl_freeze_last_layer_for
+    student.local_head.freeze_last_layer(freeze_last_layer)
+    student.global_head.freeze_last_layer(freeze_last_layer)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter(
         "loss",
@@ -135,8 +136,8 @@ def _train_one_epoch(
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr_schedule[it]
+        optimizer.param_groups[0]["lr"] = lr_schedule[it]
+        optimizer.param_groups[1]["lr"] = lr_schedule[it]
         # Teacher and student forward passes && compute loss
         teacher_out = teacher(global_views)
         student_g_out, student_l_out = student(global_views, local_views)
@@ -207,15 +208,12 @@ def _pretrain(args):
     utils.set_random_seeds(42)
     stored_args = _check_run(args)
     device = utils.get_device()
-    # Models
+    # Previous/stored constructs
     student, teacher = _get_models(device, stored_args)
-    # Data
     train_loader = _get_train_data_loader(stored_args)
-    # Loss function
     loss_fn = _get_loss_function(device, stored_args)
-    # Optimizer
     optimizer = models.get_optimizer(student, stored_args.optim)
-    # Resume training
+    # Restore training vars if any
     vars_to_restore = {
         "epoch": 0,
         "loss_history": None,
@@ -226,26 +224,28 @@ def _pretrain(args):
         run_variables=vars_to_restore,
         student=student,
         teacher=teacher,
-        loss=loss_fn,
+        loss_fn=loss_fn,
         optimizer=optimizer,
     )
     # Check run state
-    if vars_to_restore["epoch"] == stored_args.epochs:
+    if stored_args is args:
+        pass
+    elif vars_to_restore["epoch"] == stored_args.epochs:
         if not args.increment:
             print(f'Training at "{stored_args.results_dir}" already finished.')
             print("Use --increment to increment upon this training run.")
             return
-        # Increment finished training run
+        # Increment finished run
         args.save_folder = f"{args.save_folder}{args.increment_suffix}"
         args.results_dir = args.save_dir / args.save_folder
         args.results_dir.mkdir(exist_ok=True, parents=True)
         if (args.results_dir / "run.args").is_file():
             raise ValueError(f'Directory "{args.results_dir}" already in use.')
-        # Check from projection dimension mismatch
-        if args.projection_dim != stored_args.projection_dim:
+        # Check projection dimension mismatch
+        if args.ssl_projection_dim != stored_args.ssl_projection_dim:
             raise ValueError(
                 "Projection dimension changed from "
-                f"{stored_args.projection_dim} to {args.projection_dim}"
+                f"{stored_args.ssl_projection_dim} to {args.ssl_projection_dim}"
             )
         _save_args(args)
         # Re-build with the new arguments
@@ -257,11 +257,14 @@ def _pretrain(args):
         vars_to_restore["loss_history"] = None
         vars_to_restore["valid_history"] = None
     else:
-        if vars_to_restore["epoch"]:
-            print("Run arguments restored. Continuing training...")
+        print(
+            "Run arguments restored.\n"
+            "Ignoring any argument changes.\n"
+            "Continuing previous training run."
+        )
         args = stored_args
     print(f'Saving results in "{args.results_dir}".')
-    # Restore loss and validation histories
+    # Loss and validation histories
     loss_history = (
         np.zeros((args.epochs, 3), dtype=np.float32)
         if vars_to_restore["loss_history"] is None
@@ -294,7 +297,7 @@ def _pretrain(args):
         niter_per_ep=len(train_loader),
     )
     momentum_schedule = utils.cosine_scheduler(
-        base_value=args.teacher_momentum,
+        base_value=args.ssl_teacher_momentum,
         final_value=1.0,
         epochs=args.epochs,
         niter_per_ep=len(train_loader),
@@ -339,8 +342,8 @@ def _pretrain(args):
             states_dict = {
                 "student": student.state_dict(),
                 "teacher": teacher.state_dict(),
+                "loss_fn": loss_fn.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "loss": loss_fn.state_dict(),
                 "epoch": epoch + 1,
                 "loss_history": loss_history,
                 "valid_history": valid_history,
@@ -384,50 +387,50 @@ def _pretrain(args):
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
     args = utils.check_training_args(args)
     if args.disable_warmups:
-        args.teacher_temp_warmup_size = 0
+        args.ssl_teacher_temp_warmup_size = 0
     else:
-        args.teacher_temp_warmup_size = max(
+        args.ssl_teacher_temp_warmup_size = max(
             0,
-            min(args.teacher_temp_warmup_size, args.epochs),
+            min(args.ssl_teacher_temp_warmup_size, args.epochs),
         )
-    args.freeze_last_layer_for = max(
+    args.ssl_freeze_last_layer_for = max(
         0,
-        min(args.freeze_last_layer_for, args.epochs),
+        min(args.ssl_freeze_last_layer_for, args.epochs),
     )
-    args.num_local_views = max(args.num_local_views, 1)
+    args.mv_num_local_views = max(args.mv_num_local_views, 1)
     return args
 
 
 def add_multiview_args(parser: argparse.ArgumentParser):
     # Multi-view configuration
     parser.add_argument(
-        "--global-size",
+        "--mv-global-size",
         type=int,
         default=448,
-        help="Resize global crops to this dimension.",
+        help="Global-view crops target dimension.",
     )
     parser.add_argument(
-        "--global-scale",
+        "--mv-global-scale",
         type=float,
         nargs=2,
         default=(0.7, 0.9),
-        help="Min-max range of image area for global crops.",
+        help="Global-view crops min-max range.",
     )
     parser.add_argument(
-        "--local-size",
+        "--mv-local-size",
         type=int,
         default=224,
-        help="Resize local crops to this dimension.",
+        help="Local-view crops target dimension.",
     )
     parser.add_argument(
-        "--local-scale",
+        "--mv-local-scale",
         type=float,
         nargs=2,
         default=(0.25, 0.5),
-        help="Min-max range of image area for local crops.",
+        help="Local-view crops min-max range.",
     )
     parser.add_argument(
-        "--num-local-views",
+        "--mv-num-local-views",
         type=int,
         default=2,
         help="Generate N >= 1 local views for each image.",
@@ -452,52 +455,52 @@ def get_args_parser():
     )
     # Architecture
     parser.add_argument(
-        "--projection-dim",
+        "--ssl-projection-dim",
         type=int,
         default=8192,
-        help="Output dimension of the feature projection heads.",
+        help="Projection heads output dimension.",
     )
     # Momentum coefficients
     parser.add_argument(
-        "--teacher-momentum",
+        "--ssl-teacher-momentum",
         type=float,
         default=0.996,
         help="EMA update constant for teacher network.",
     )
     parser.add_argument(
-        "--center-momentum",
+        "--ssl-center-momentum",
         type=float,
         default=0.9,
         help="EMA update constant for the teacher output center.",
     )
     # Training stability
     parser.add_argument(
-        "--freeze-last-layer-for",
+        "--ssl-freeze-last-layer-for",
         type=int,
         default=5,
         help="Freeze last layer of student projection heads for N epochs.",
     )
     # Sharpness temperature
     parser.add_argument(
-        "--student-temp",
+        "--ssl-student-temp",
         type=float,
         default=0.1,
         help="Student softmax sharpening constant.",
     )
     parser.add_argument(
-        "--teacher-temp",
+        "--ssl-teacher-temp",
         type=float,
         default=0.04,
         help="Teacher softmax sharpening constant.",
     )
     parser.add_argument(
-        "--teacher-temp-warmup-size",
+        "--ssl-teacher-temp-warmup-size",
         type=int,
         default=3,
         help="Warmup duration for the teacher softmax sharpening constant.",
     )
     parser.add_argument(
-        "--teacher-temp-warmup-start",
+        "--ssl-teacher-temp-warmup-start",
         type=float,
         default=0.02,
         help="Start value for the teacher softmax sharpening constant warmup.",
@@ -505,7 +508,7 @@ def get_args_parser():
     # Multi-view arguments
     parser = add_multiview_args(parser)
     # kNN evaluation arguments
-    parser = utils.add_knn_eval_args(parser, prefix="knn-")
+    parser = utils.add_knn_eval_args(parser)
     return parser
 
 

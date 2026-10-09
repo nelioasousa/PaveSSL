@@ -16,8 +16,8 @@ def _get_classifier(num_classes, device, args):
         num_classes=num_classes,
         head_num_layers=1,
     )
-    classifier.backbone = eval_utils.load_backbone(
-        state_file=(args.experiment_dir / "checkpoint.pth"),
+    classifier.backbone = eval_utils.load_experiment_backbone(
+        exp_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
     # Static/frozen backbone
@@ -126,7 +126,6 @@ def _main(args):
     for metric, values in results.items():
         print(f"{metric=}:")
         print(values, end="\n\n")
-    return
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -155,7 +154,7 @@ def get_args_parser():
     )
     parser = eval_utils.add_eval_args(parser, "linear_eval.csv")
     parser.add_argument(
-        f"--eval-pred-threshold",
+        "--eval-pred-threshold",
         type=float,
         default=0.5,
         help="Prediction threshold for linear evaluation.",

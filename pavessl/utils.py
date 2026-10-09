@@ -245,9 +245,7 @@ class MetricLogger:
         )
 
 
-def add_data_arg(
-    parser: argparse.ArgumentParser,
-) -> argparse.ArgumentParser:
+def add_data_arg(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--data",
         type=Path,
@@ -445,40 +443,49 @@ def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
+def add_knn_eval_args(parser: argparse.ArgumentParser):
     parser.add_argument(
-        f"--{prefix}ks",
+        "--knn-ks",
         type=int,
         nargs="+",
         default=[5, 10, 25, 50],
         help="Number of neighbours to use in kNN evalatuation.",
     )
     parser.add_argument(
-        f"--{prefix}crops-target-size",
+        "--knn-crops-target-size",
         type=int,
         default=448,
-        help="Resize crops to this dimension.",
+        help=(
+            "Resize crops to this dimension. "
+            "See `data.FourPointCrops` for more information."
+        ),
     )
     parser.add_argument(
-        f"--{prefix}crops-overlap",
+        "--knn-crops-overlap",
         type=float,
         default=0.1,
-        help="Percentual overlap between split crops.",
+        help=(
+            "Percentual overlap between split crops. "
+            "See `data.FourPointCrops` for more information."
+        ),
     )
     parser.add_argument(
-        f"--{prefix}dist-temperature",
+        "--knn-dist-temperature",
         type=float,
         default=0.07,
-        help="Sharpening constant for samples distance weighting.",
+        help=(
+            "Sharpening constant for samples' distance weighting. "
+            "Smaller values give more importance to closest samples."
+        ),
     )
     parser.add_argument(
-        f"--{prefix}pred-threshold",
+        "--knn-pred-threshold",
         type=float,
         default=0.3,
         help="Threshold for kNN prediction.",
     )
     parser.add_argument(
-        f"--{prefix}metrics",
+        "--knn-metrics",
         type=str,
         nargs="+",
         choices=[
@@ -499,7 +506,7 @@ def add_knn_eval_args(parser: argparse.ArgumentParser, prefix: str = ""):
             "macro_specificity",
             "weighted_specificity",
         ],
-        help="Select 1+ of the available kNN evaluation metrics.",
+        help="Select 1+ of the available evaluation metrics.",
     )
     return parser
 

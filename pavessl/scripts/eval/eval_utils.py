@@ -1,5 +1,5 @@
-from pathlib import Path
 from argparse import ArgumentParser
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -29,9 +29,13 @@ def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
     return parser
 
 
-def load_backbone(state_file: Path, checkpoint_key: str):
+def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
     backbone = models.build_backbone(None)
-    state_dict = torch.load(state_file, map_location="cpu", weights_only=False)
+    state_dict = torch.load(
+        f=(exp_dir / "checkpoint.pth"),
+        map_location="cpu",
+        weights_only=False,
+    )
     state_dict = {
         key[9:]: state_tensor
         for key, state_tensor in state_dict[checkpoint_key].items()

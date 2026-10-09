@@ -12,11 +12,11 @@ from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_args
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
     multiview = SSLMultiviewTransform(
-        global_size=args.global_size,
-        global_scale=args.global_scale,
-        local_size=args.local_size,
-        local_scale=args.local_scale,
-        num_local_views=args.num_local_views,
+        global_size=args.mv_global_size,
+        global_scale=args.mv_global_scale,
+        local_size=args.mv_local_size,
+        local_scale=args.mv_local_scale,
+        num_local_views=args.mv_num_local_views,
     )
     bottomsplit = FourPointCrops(
         size=args.crops_target_size,
