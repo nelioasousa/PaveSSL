@@ -6,19 +6,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from pavessl import data, models, utils
-
-
-def load_backbone(state_file: Path, checkpoint_key: str):
-    backbone = models.build_backbone(None)
-    state_dict = torch.load(state_file, map_location="cpu", weights_only=False)
-    state_dict = {
-        key[9:]: state_tensor
-        for key, state_tensor in state_dict[checkpoint_key].items()
-        if key.startswith("backbone.")
-    }
-    backbone.load_state_dict(state_dict, strict=True)
-    return backbone
+from pavessl import data, utils
+from pavessl.scripts.eval import eval_utils
 
 
 def _compute_features(
@@ -127,35 +116,6 @@ def _get_feature_similarities_and_values(
     return similarities, key_values, target_values
 
 
-def _compute_metrics(preds: np.ndarray, targets: np.ndarray):
-    counts = targets.sum(axis=0)
-    tps = (preds * targets).sum(axis=0)
-    tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
-    accuracy = (tps + tns) / len(targets)
-    sensitivity = tps / counts
-    specificity = tns / (len(targets) - counts)
-    class_weights = counts / counts.sum()
-    macro_accuracy = accuracy.mean().item()
-    weighted_accuracy = (accuracy * class_weights).sum().item()
-    balanced_accuracy = sensitivity.mean().item()
-    macro_sensitivity = balanced_accuracy
-    weighted_sensitivity = (sensitivity * class_weights).sum().item()
-    macro_specificity = specificity.mean().item()
-    weighted_specificity = (specificity * class_weights).sum().item()
-    return {
-        "accuracy": accuracy,
-        "sensitivity": sensitivity,
-        "specificity": specificity,
-        "macro_accuracy": macro_accuracy,
-        "weighted_accuracy": weighted_accuracy,
-        "balanced_accuracy": balanced_accuracy,
-        "macro_sensitivity": macro_sensitivity,
-        "weighted_sensitivity": weighted_sensitivity,
-        "macro_specificity": macro_specificity,
-        "weighted_specificity": weighted_specificity,
-    }
-
-
 @torch.inference_mode()
 def knn_eval_one(
     model: torch.nn.Module,
@@ -215,7 +175,7 @@ def knn_eval_one(
         probs = closest_values[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
         preds = torch.where(probs > pred_threshold, 1.0, 0.0)
-        metrics = _compute_metrics(
+        metrics = eval_utils.multi_value_classification_metrics(
             preds=preds.cpu().numpy(),
             targets=target_values.cpu().numpy(),
         )
@@ -260,7 +220,7 @@ def knn_eval_all(
 
 
 def _main(args):
-    backbone = load_backbone(
+    backbone = eval_utils.load_backbone(
         state_file=(args.experiment_dir / "checkpoint.pth"),
         checkpoint_key=args.checkpoint_key,
     )
@@ -295,27 +255,8 @@ def get_args_parser():
     parser = argparse.ArgumentParser(
         description="Run k-NN evaluation on a pretrained backbone.",
     )
-    # Checkpoint location and save location
-    parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
-    parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
-    parser.add_argument("--save-folder", type=str, default="evals")
-    parser.add_argument("--save-file", type=str, default="knn_eval.csv")
-    # Data
-    parser.add_argument("--data", type=Path, default=Path("data/RDD2022_proc"))
-    parser.add_argument(
-        "--target-source",
-        choices=[
-            "China_Drone",
-            "China_MotorBike",
-            "Czech",
-            "India",
-            "Japan",
-            "Norway",
-            "United_States",
-        ],
-        type=str,
-        default="India",
-    )
+    # Eval args
+    parser = eval_utils.add_eval_args(parser, "knn_eval.csv")
     # k-NN specific
     parser = utils.add_knn_eval_args(parser)
     # Others
