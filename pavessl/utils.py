@@ -265,7 +265,7 @@ def add_training_args(
     save_dir_default: str | None = None,
     save_folder_default: str | None = None,
     sources_subset_default: int = 1,
-    epochs_default: int = 150,
+    epochs_default: int = 200,
     batch_size_default: int = 8,
     lr_default: float = 1e-4,
     lr_end_default: float = 1e-6,
@@ -279,22 +279,18 @@ def add_training_args(
     parser.add_argument(
         "--save-dir",
         type=Path,
-        required=(save_dir_default is None),
+        default=save_dir_default,
         help="Central/parent directory for saving experiments.",
     )
-    if save_dir_default is not None:
-        parser.set_defaults(save_dir=save_dir_default)
     parser.add_argument(
         "--save-folder",
         type=str,
-        required=(save_folder_default is None),
+        default=save_folder_default,
         help=(
             "Experiment save folder. "
             "The experiment results are saved in '--save-dir/--save-folder'."
         ),
     )
-    if save_folder_default is not None:
-        parser.set_defaults(save_folder=save_folder_default)
     parser.add_argument(
         "--clear",
         action="store_true",
@@ -417,6 +413,8 @@ def add_training_args(
 
 
 def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
+    args.save_dir = Path(".") if args.save_dir is None else args.save_dir
+    args.save_folder = "test" if args.save_folder is None else args.save_folder
     args.results_dir = args.save_dir / args.save_folder
     args.results_dir.mkdir(exist_ok=True, parents=True)
     args.start_points_dir.mkdir(exist_ok=True, parents=True)

@@ -314,8 +314,14 @@ def _main(args):
 
 
 def check_args(args: argparse.Namespace) -> argparse.Namespace:
-    args.save_dir = args.experiment_dir
-    args.save_folder = "linear_eval_finetuning"
+    args.save_dir = (
+        args.experiment_dir if args.save_dir is None else args.save_dir
+    )
+    args.save_folder = (
+        "linear_eval_finetuning"
+        if args.save_folder is None
+        else args.save_folder
+    )
     args = utils.check_training_args(args)
     return args
 
@@ -327,8 +333,6 @@ def get_args_parser():
     parser = utils.add_data_arg(parser)
     parser = utils.add_training_args(
         parser,
-        save_dir_default="",
-        save_folder_default="",
         sources_subset_default=0,
         epochs_default=100,
         batch_size_default=16,
