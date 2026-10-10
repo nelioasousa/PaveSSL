@@ -3,8 +3,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.utils.data import Dataset, DataLoader
 
-from pavessl import models
+from pavessl import models, utils
 
 
 def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
@@ -72,3 +73,60 @@ def multi_value_classification_metrics(preds: np.ndarray, targets: np.ndarray):
         "macro_specificity": macro_specificity,
         "weighted_specificity": weighted_specificity,
     }
+
+
+@torch.inference_mode()
+def compute_features_and_labels(
+    model: torch.nn.Module,
+    dataset: Dataset,
+    batch_size: int,
+    num_workers: int,
+    header: str = "",
+):
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    device = next(model.parameters()).device
+    data_loader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=False,
+        drop_last=False,
+    )
+    features = None
+    labels = None
+    for i, (images, targets) in enumerate(
+        metric_logger.log_every(
+            iterable=data_loader,
+            print_freq=max(5, 5 * len(data_loader) // (5 * 10)),
+            header=header,
+            cpu_training=(device.type == "cpu"),
+        )
+    ):
+        targets = targets["target"]
+        if isinstance(images, list):
+            images = [imgs.to(device, non_blocking=True) for imgs in images]
+            feats = model(images[0])
+            for imgs in images[1:]:
+                feats.add_(model(imgs))
+            feats.div_(len(images))
+        else:
+            images = images.to(device, non_blocking=True)
+            feats = model(images)
+        if features is None:
+            features = torch.empty(
+                size=(len(dataset), *feats.shape[1:]),
+                dtype=feats.dtype,
+                device=device,
+            )
+            labels = torch.empty(
+                size=(len(dataset), *targets.shape[1:]),
+                dtype=targets.dtype,
+                device=device,
+            )
+        start = i * batch_size
+        end = start + len(targets)
+        features[start:end].copy_(feats)
+        labels[start:end].copy_(targets)
+    features.div_(torch.linalg.vector_norm(features, dim=-1, keepdims=True))
+    return features, labels

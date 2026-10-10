@@ -4,67 +4,9 @@ from typing import Literal
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 
 from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
-
-
-def _compute_features(
-    model: torch.nn.Module,
-    dataset: torch.utils.data.Dataset,
-    batch_size: int,
-    num_workers: int,
-    header: str = "",
-):
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    device = next(model.parameters()).device
-    data_loader = DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=False,
-        drop_last=False,
-    )
-    features = None
-    labels = None
-    for i, (images, targets) in enumerate(
-        metric_logger.log_every(
-            iterable=data_loader,
-            # More or less 50 log lines per iteration
-            print_freq=max(5, 5 * len(data_loader) // (5 * 50)),
-            header=header,
-            cpu_training=(device.type != "cuda"),
-        )
-    ):
-        targets = targets["target"]
-        if isinstance(images, list):
-            images = [imgs.to(device, non_blocking=True) for imgs in images]
-            feats = model(images[0])
-            for imgs in images[1:]:
-                feats.add_(model(imgs))
-            feats.div_(len(images))
-        else:
-            images = images.to(device, non_blocking=True)
-            feats = model(images)
-        feats.div_(torch.linalg.vector_norm(feats, dim=-1, keepdims=True))
-        if features is None:
-            features = torch.empty(
-                size=(len(dataset), feats.shape[-1]),
-                dtype=feats.dtype,
-                device=device,
-            )
-            labels = torch.empty(
-                size=(len(dataset), targets.shape[-1]),
-                dtype=targets.dtype,
-                device=device,
-            )
-        start = i * batch_size
-        end = start + len(targets)
-        features[start:end].copy_(feats)
-        labels[start:end].copy_(targets)
-    return features, labels
 
 
 def _get_feature_similarities_and_values(
@@ -80,11 +22,11 @@ def _get_feature_similarities_and_values(
     header: str = "",
 ):
     transform = data.FourPointCrops(crops_target_size, crops_overlap)
-    key_features, key_values = _compute_features(
+    key_features, key_values = eval_utils.compute_features_and_labels(
         model=model,
         dataset=data.RDD2022(
             data_path=data_path,
-            sources=[target_source],
+            sources=target_source,
             split=key_split,
             task="classification",
             transform=transform,
@@ -96,11 +38,11 @@ def _get_feature_similarities_and_values(
             f"[{target_source}: {key_split} split]"
         ),
     )
-    query_features, target_values = _compute_features(
+    query_features, target_values = eval_utils.compute_features_and_labels(
         model=model,
         dataset=data.RDD2022(
             data_path=data_path,
-            sources=[target_source],
+            sources=target_source,
             split=query_split,
             task="classification",
             transform=transform,
