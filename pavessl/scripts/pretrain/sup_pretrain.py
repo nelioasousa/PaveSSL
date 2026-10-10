@@ -71,7 +71,7 @@ def _train_one_epoch(
     wd_schedule,
     epoch,
     device,
-    args,
+    num_epochs,
 ):
     classifier.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -81,8 +81,8 @@ def _train_one_epoch(
     )
     metric_logger.add_meter("lr", utils.SmoothedValue(fmt="{value:.2e}"))
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
-    epoch_str = str(epoch + 1).rjust(len(str(args.epochs)), "0")
-    header = f"(Train) Epoch: [{epoch_str}/{args.epochs}]"
+    epoch_str = str(epoch + 1).rjust(len(str(num_epochs)), "0")
+    header = f"(Train) Epoch: [{epoch_str}/{num_epochs}]"
     # More or less 50 log lines per iteration
     log_every = max(5, 5 * len(data_loader) // (5 * 50))
     for it, (images, labels) in enumerate(
@@ -99,8 +99,8 @@ def _train_one_epoch(
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr_schedule[it]
+        optimizer.param_groups[0]["lr"] = lr_schedule[it]
+        optimizer.param_groups[1]["lr"] = lr_schedule[it]
         # Foward pass and loss computation
         logits = classifier(images)
         loss = loss_fn(
@@ -266,7 +266,7 @@ def pretrain(
             wd_schedule=wd_schedule,
             epoch=epoch,
             device=device,
-            args=args,
+            num_epochs=args.epochs,
         )
         loss_history[epoch] = [
             loss_log.min_value,
