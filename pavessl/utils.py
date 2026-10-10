@@ -53,11 +53,10 @@ def get_device():
 
 def save_states(
     *,
-    save_dir: Path,
+    save_file: Path,
     states_dict: dict[str, Any],
     epoch: int | None = None,
 ):
-    save_file = save_dir / "checkpoint.pth"
     tmp_file = save_file.with_suffix(".tmp")
     try:
         with tmp_file.open("wb") as tmp:
@@ -71,7 +70,10 @@ def save_states(
         # If an error occurs here, the tmp_file is already safe
         try:
             if epoch is not None:
-                copy2(tmp_file, save_dir / f"checkpoint_{epoch:03d}.pth")
+                copy2(
+                    tmp_file,
+                    save_file.parent / f"checkpoint_{epoch:03d}.pth",
+                )
             os.replace(tmp_file, save_file)
         except Exception as e:
             raise RuntimeError(

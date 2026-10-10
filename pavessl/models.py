@@ -379,6 +379,28 @@ class ClassificationHead(nn.Module):
         return x
 
 
+def build_classification_head(
+    state_path: str | Path | None = None,
+    **kwargs,
+) -> ClassificationHead:
+    classifier = ClassificationHead(**kwargs)
+    if state_path is None:
+        return classifier
+    state_path = Path(state_path)
+    if state_path.is_file():
+        classifier.load_state_dict(
+            state_dict=torch.load(
+                f=state_path,
+                map_location="cpu",
+                weights_only=True,
+            ),
+            strict=True,
+        )
+        return classifier
+    torch.save(classifier.state_dict(), state_path)
+    return classifier
+
+
 class ClassificationNetwork(nn.Module):
     def __init__(
         self,

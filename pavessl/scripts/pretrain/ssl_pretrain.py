@@ -349,7 +349,7 @@ def _pretrain(args):
                 "valid_history": valid_history,
             }
             utils.save_states(
-                save_dir=args.results_dir,
+                save_file=(args.results_dir / "checkpoint.pth"),
                 states_dict=states_dict,
                 epoch=epoch,
             )

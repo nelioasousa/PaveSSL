@@ -43,6 +43,7 @@ def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
         if key.startswith("backbone.")
     }
     backbone.load_state_dict(state_dict, strict=True)
+    backbone.eval()
     return backbone
 
 
