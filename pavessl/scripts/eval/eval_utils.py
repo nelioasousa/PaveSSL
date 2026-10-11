@@ -48,16 +48,18 @@ def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
 
 
 def multi_value_classification_metrics(preds: np.ndarray, targets: np.ndarray):
-    counts = targets.sum(axis=0)
     tps = (preds * targets).sum(axis=0)
     fps = (preds * (1.0 - targets)).sum(axis=0)
     tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
     # Per-class metrics
+    counts = targets.sum(axis=0)
     accuracy = (tps + tns) / len(targets)
-    precision = tps / (tps + fps)
-    sensitivity = tps / counts
+    precision = tps / np.maximum(tps + fps, 1)
+    sensitivity = tps / np.maximum(counts, 1)
     specificity = tns / (len(targets) - counts)
-    f1_score = 2 * precision * sensitivity / (precision + sensitivity)
+    f1_score = 2 * precision * sensitivity / (
+        np.maximum(precision + sensitivity, 1)
+    )
     # Global metrics
     class_weights = counts / counts.sum()
     macro_accuracy = accuracy.mean().item()
