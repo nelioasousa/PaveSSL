@@ -207,6 +207,7 @@ def _finetune(
 
 
 def _main(args):
+    utils.set_random_seeds(42)
     device = utils.get_device()
     backbone = eval_utils.load_experiment_backbone(
         exp_dir=args.experiment_dir,

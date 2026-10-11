@@ -164,7 +164,6 @@ def _train_one_epoch(
 
 
 def _pretrain(args):
-    utils.set_random_seeds(42)
     device = utils.get_device()
     # Check run
     stored_args = pretrain_utils.check_run(args)
@@ -230,6 +229,7 @@ def _pretrain(args):
     # Training
     training_start = time.monotonic()
     for epoch in range(start_epoch, args.epochs):
+        utils.set_random_seeds(42 + epoch)
         loss_log = _train_one_epoch(
             student=student,
             teacher=teacher,
