@@ -50,29 +50,42 @@ def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
 def multi_value_classification_metrics(preds: np.ndarray, targets: np.ndarray):
     counts = targets.sum(axis=0)
     tps = (preds * targets).sum(axis=0)
+    fps = (preds * (1.0 - targets)).sum(axis=0)
     tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
+    # Per-class metrics
     accuracy = (tps + tns) / len(targets)
+    precision = tps / (tps + fps)
     sensitivity = tps / counts
     specificity = tns / (len(targets) - counts)
+    f1_score = 2 * precision * sensitivity / (precision + sensitivity)
+    # Global metrics
     class_weights = counts / counts.sum()
     macro_accuracy = accuracy.mean().item()
     weighted_accuracy = (accuracy * class_weights).sum().item()
-    balanced_accuracy = sensitivity.mean().item()
-    macro_sensitivity = balanced_accuracy
+    macro_precision = precision.mean().item()
+    weighted_precision = (precision * class_weights).sum().item()
+    macro_sensitivity = sensitivity.mean().item()
     weighted_sensitivity = (sensitivity * class_weights).sum().item()
     macro_specificity = specificity.mean().item()
     weighted_specificity = (specificity * class_weights).sum().item()
+    macro_f1_score = f1_score.mean().item()
+    weighted_f1_score = (f1_score * class_weights).sum().item()
     return {
         "accuracy": accuracy,
+        "precision": precision,
         "sensitivity": sensitivity,
         "specificity": specificity,
+        "f1_score": f1_score,
         "macro_accuracy": macro_accuracy,
         "weighted_accuracy": weighted_accuracy,
-        "balanced_accuracy": balanced_accuracy,
+        "macro_precision": macro_precision,
+        "weighted_precision": weighted_precision,
         "macro_sensitivity": macro_sensitivity,
         "weighted_sensitivity": weighted_sensitivity,
         "macro_specificity": macro_specificity,
         "weighted_specificity": weighted_specificity,
+        "macro_f1_score": macro_f1_score,
+        "weighted_f1_score": weighted_f1_score,
     }
 
 

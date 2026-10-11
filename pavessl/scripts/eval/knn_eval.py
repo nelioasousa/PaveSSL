@@ -99,20 +99,7 @@ def knn_eval_one(
         closest_values[..., i].copy_(key_values[idxs[:, i]])
     similarities.div_(distance_temperature).exp_().unsqueeze_(dim=1)
     closest_values.mul_(similarities)
-    accuracy = np.empty((len(ks), target_values.shape[-1]), dtype=np.float32)
-    macro_accuracy = np.empty(len(ks), dtype=np.float32)
-    results = {
-        "accuracy": accuracy,
-        "sensitivity": np.empty_like(accuracy),
-        "specificity": np.empty_like(accuracy),
-        "macro_accuracy": macro_accuracy,
-        "weighted_accuracy": np.empty_like(macro_accuracy),
-        "balanced_accuracy": np.empty_like(macro_accuracy),
-        "macro_sensitivity": np.empty_like(macro_accuracy),
-        "weighted_sensitivity": np.empty_like(macro_accuracy),
-        "macro_specificity": np.empty_like(macro_accuracy),
-        "weighted_specificity": np.empty_like(macro_accuracy),
-    }
+    results = []
     for i, k_value in enumerate(ks):
         probs = closest_values[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
@@ -121,8 +108,7 @@ def knn_eval_one(
             preds=preds.cpu().numpy(),
             targets=target_values.cpu().numpy(),
         )
-        for metric, values in metrics.items():
-            results[metric][i] = values
+        results.append(metrics)
     return results
 
 

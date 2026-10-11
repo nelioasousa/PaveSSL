@@ -1,14 +1,15 @@
 import argparse
-import math
 import pickle
 import time
+from itertools import product
+from math import ceil, isfinite
 
 import numpy as np
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
 from pavessl.data import RDD2022, get_augmentation
-from pavessl.scripts.eval.knn_eval import knn_eval_all
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _save_args(args):
@@ -111,7 +112,7 @@ def _train_one_epoch(
         )
         # Loss explosion, unstable training
         loss_value = loss.item()  # CPU-GPU synchronization
-        if not math.isfinite(loss_value):
+        if not isfinite(loss_value):
             raise RuntimeError(f"Loss exploded with value {loss_value}")
         # Classifier update
         optimizer.zero_grad()
@@ -125,33 +126,6 @@ def _train_one_epoch(
         )
     # print("Averaged stats:", metric_logger)
     return metric_logger.meters["loss"]
-
-
-def _eval(model, header, args):
-    model.eval()
-    eval_results = knn_eval_all(
-        model=model.backbone,
-        data_path=args.data,
-        target_sources=args.sources,
-        ks=args.knn_ks,
-        distance_temperature=args.knn_dist_temperature,
-        pred_threshold=args.knn_pred_threshold,
-        crops_target_size=args.knn_crops_target_size,
-        crops_overlap=args.knn_crops_overlap,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        key_split="train",
-        query_split="valid",
-        logging_header=header,
-    )
-    return np.array(
-        [
-            eval_results[source][metric][i]
-            for source in args.sources
-            for i in range(len(args.knn_ks))
-            for metric in args.knn_metrics
-        ]
-    )
 
 
 def pretrain(
@@ -173,14 +147,15 @@ def pretrain(
     loss_fn = get_loss_fn(device, stored_args)
     optimizer = models.get_optimizer(classifier, stored_args.optim)
     # Restore training vars if any
-    vars_to_restore = {
+    run_variables = {
         "epoch": 0,
         "loss_history": None,
         "valid_history": None,
+        "valid_metrics": None,
     }
     utils.restart_from_checkpoint(
         ckp_path=(stored_args.results_dir / "checkpoint.pth"),
-        run_variables=vars_to_restore,
+        run_variables=run_variables,
         classifier=classifier,
         loss_fn=loss_fn,
         optimizer=optimizer,
@@ -188,7 +163,7 @@ def pretrain(
     # Check run state
     if stored_args is args:
         pass
-    elif vars_to_restore["epoch"] == stored_args.epochs:
+    elif run_variables["epoch"] == stored_args.epochs:
         if not args.increment:
             print(f'Training at "{stored_args.results_dir}" already finished.')
             print("Use --increment to increment upon this training run.")
@@ -211,9 +186,10 @@ def pretrain(
         loss_fn = get_loss_fn(device, args)
         optimizer = models.get_optimizer(classifier, args.optim)
         # Unset run variables
-        vars_to_restore["epoch"] = 0
-        vars_to_restore["loss_history"] = None
-        vars_to_restore["valid_history"] = None
+        run_variables["epoch"] = 0
+        run_variables["loss_history"] = None
+        run_variables["valid_history"] = None
+        run_variables["valid_metrics"] = None
     else:
         print(
             "Run arguments restored.\n"
@@ -222,23 +198,14 @@ def pretrain(
         )
         args = stored_args
     print(f'Saving results in "{args.results_dir}".')
-    # Loss and validation histories
+    # Run variables
+    start_epoch = run_variables["epoch"]
+    valid_history = run_variables["valid_history"]
+    valid_metrics = run_variables["valid_metrics"]
     loss_history = (
         np.zeros((args.epochs, 3), dtype=np.float32)
-        if vars_to_restore["loss_history"] is None
-        else vars_to_restore["loss_history"]
-    )
-    num_metrics = len(args.sources) * len(args.knn_ks) * len(args.knn_metrics)
-    valid_history = (
-        np.zeros(
-            (
-                1 + math.ceil((args.epochs - 1) / args.validation_freq),
-                num_metrics + 1,
-            ),
-            dtype=np.float32,
-        )
-        if vars_to_restore["valid_history"] is None
-        else vars_to_restore["valid_history"]
+        if run_variables["loss_history"] is None
+        else run_variables["loss_history"]
     )
     # Schedulers
     lr_schedule = utils.cosine_scheduler(
@@ -255,8 +222,8 @@ def pretrain(
         niter_per_ep=len(train_loader),
     )
     # Training
-    start_time = time.monotonic()
-    for epoch in range(vars_to_restore["epoch"], args.epochs):
+    training_start = time.monotonic()
+    for epoch in range(start_epoch, args.epochs):
         loss_log = _train_one_epoch(
             classifier=classifier,
             loss_fn=loss_fn,
@@ -275,13 +242,39 @@ def pretrain(
         ]
         # Run validation
         if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
-            row_index = math.ceil(epoch / args.validation_freq)
-            valid_history[row_index, 0] = epoch + 1
-            valid_history[row_index, 1:] = _eval(
-                model=classifier,
-                header="(Eval/Classifier)",
-                args=args,
+            eval_start = time.monotonic()
+            classifier_eval = pretrain_utils.backbone_knn_eval(
+                backbone=classifier.backbone,
+                data_path=args.data,
+                target_sources=args.sources,
+                ks=args.knn_ks,
+                distance_temperature=args.knn_dist_temperature,
+                pred_threshold=args.knn_pred_threshold,
+                crops_target_size=args.knn_crops_target_size,
+                crops_overlap=args.knn_crops_overlap,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                logging_header="(Eval/Classifier)",
             )
+            if valid_metrics is None:
+                valid_metrics = sorted(classifier_eval[args.sources[0]][0])
+                num_rows = 1 + ceil((args.epochs - 1) / args.validation_freq)
+                num_cols = (
+                    1
+                    + len(valid_metrics)
+                    * len(args.sources)
+                    * len(args.knn_ks)
+                )
+                valid_history = np.zeros((num_rows, num_cols), dtype=np.float32)
+            row_index = ceil(epoch / args.validation_freq)
+            valid_history[row_index, 0] = epoch + 1
+            valid_history[row_index, 1:] = [
+                classifier_eval[source][k_idx][metric]
+                for source, k_idx, metric
+                in product(args.sources, range(len(args.knn_ks)), valid_metrics)
+            ]
+            duration = int(time.monotonic() - eval_start)
+            print(f"Validation ended in {utils.get_time_string(duration)}!")
         # Save checkpoints
         if not (epoch % args.checkpoint_freq) or (epoch + 1) == args.epochs:
             states_dict = {
@@ -291,6 +284,7 @@ def pretrain(
                 "epoch": epoch + 1,
                 "loss_history": loss_history,
                 "valid_history": valid_history,
+                "valid_metrics": valid_metrics,
             }
             utils.save_states(
                 save_file=(args.results_dir / "checkpoint.pth"),
@@ -309,10 +303,9 @@ def pretrain(
     valid_headers = ["epoch"]
     valid_headers.extend(
         [
-            f"{source}__{k}__{metric}"
-            for source in args.sources
-            for k in args.knn_ks
-            for metric in args.knn_metrics
+            f"classifier__{source}__{k}__{metric}"
+            for source, k, metric
+            in product(args.sources, args.knn_ks, valid_metrics)
         ]
     )
     np.savetxt(
@@ -323,8 +316,8 @@ def pretrain(
         header=(",".join(valid_headers)),
         comments="",
     )
-    train_duration = int(time.monotonic() - start_time)
-    print(f"Training ended in {utils.get_time_string(train_duration)}!")
+    duration = int(time.monotonic() - training_start)
+    print(f"Training ended in {utils.get_time_string(duration)}!")
     return classifier
 
 
