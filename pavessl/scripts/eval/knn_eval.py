@@ -2,7 +2,6 @@ import argparse
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import torch
 
 from pavessl import data, utils
@@ -17,8 +16,8 @@ def _get_feature_similarities_and_values(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    key_split: Literal["train", "valid", "test"] = "train",
-    query_split: Literal["train", "valid", "test"] = "valid",
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
     header: str = "",
 ):
     transform = data.FourPointCrops(crops_target_size, crops_overlap)
@@ -27,7 +26,7 @@ def _get_feature_similarities_and_values(
         dataset=data.RDD2022(
             data_path=data_path,
             sources=target_source,
-            split=key_split,
+            split=ref_split,
             task="classification",
             transform=transform,
         ),
@@ -35,7 +34,7 @@ def _get_feature_similarities_and_values(
         num_workers=num_workers,
         header=(
             f"{header}{' ' if header else ''}"
-            f"[{target_source}: {key_split} split]"
+            f"[{target_source}: {ref_split} split]"
         ),
     )
     query_features, target_values = eval_utils.compute_features_and_labels(
@@ -43,7 +42,7 @@ def _get_feature_similarities_and_values(
         dataset=data.RDD2022(
             data_path=data_path,
             sources=target_source,
-            split=query_split,
+            split=eval_split,
             task="classification",
             transform=transform,
         ),
@@ -51,7 +50,7 @@ def _get_feature_similarities_and_values(
         num_workers=num_workers,
         header=(
             f"{header}{' ' if header else ''}"
-            f"[{target_source}: {query_split} split]"
+            f"[{target_source}: {eval_split} split]"
         ),
     )
     similarities = torch.mm(query_features, key_features.t())
@@ -70,8 +69,8 @@ def knn_eval_one(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    key_split: Literal["train", "valid", "test"] = "train",
-    query_split: Literal["train", "valid", "test"] = "valid",
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
     logging_header: str = "",
 ):
     max_k = max(ks)
@@ -83,8 +82,8 @@ def knn_eval_one(
         crops_overlap=crops_overlap,
         batch_size=batch_size,
         num_workers=num_workers,
-        key_split=key_split,
-        query_split=query_split,
+        ref_split=ref_split,
+        eval_split=eval_split,
         header=logging_header,
     )
     similarities, key_values, target_values = similarities_and_values
@@ -123,8 +122,8 @@ def knn_eval_all(
     crops_overlap: float,
     batch_size: int,
     num_workers: int,
-    key_split: Literal["train", "valid", "test"] = "train",
-    query_split: Literal["train", "valid", "test"] = "valid",
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
     logging_header: str = "",
 ):
     return {
@@ -139,8 +138,8 @@ def knn_eval_all(
             crops_overlap=crops_overlap,
             batch_size=batch_size,
             num_workers=num_workers,
-            key_split=key_split,
-            query_split=query_split,
+            ref_split=ref_split,
+            eval_split=eval_split,
             logging_header=logging_header,
         )
         for source in target_sources
@@ -152,11 +151,7 @@ def _main(args):
         exp_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
-    device = torch.device(
-        "cpu"
-        if args.use_cpu or not torch.cuda.is_available()
-        else torch.cuda.current_device()
-    )
+    device = utils.get_device()
     backbone = backbone.to(device=device, non_blocking=True)
     results = knn_eval_one(
         model=backbone,
@@ -169,8 +164,8 @@ def _main(args):
         crops_overlap=args.knn_crops_overlap,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        key_split="train",
-        query_split="test",
+        ref_split=args.ref_split,
+        eval_split=args.eval_split,
         logging_header="(kNN Eval)",
     )
     # Save results
@@ -186,7 +181,18 @@ def get_args_parser():
     parser = utils.add_data_arg(parser)
     parser = eval_utils.add_eval_args(parser, "knn_eval.csv")
     parser = utils.add_knn_eval_args(parser)
-    parser.add_argument("--use-cpu", action="store_true")
+    parser.add_argument(
+        "--ref-split",
+        choices=["train", "valid", "test"],
+        default="train",
+        help="Which split to use as reference.",
+    )
+    parser.add_argument(
+        "--eval-split",
+        choices=["train", "valid", "test"],
+        default="test",
+        help="Which split to evaluate.",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)
     return parser

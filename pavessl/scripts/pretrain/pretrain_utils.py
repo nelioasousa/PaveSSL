@@ -30,8 +30,8 @@ def backbone_knn_eval(
         crops_overlap=crops_overlap,
         batch_size=batch_size,
         num_workers=num_workers,
-        key_split="train",
-        query_split="valid",
+        ref_split="train",
+        eval_split="valid",
         logging_header=logging_header,
     )
     return {
