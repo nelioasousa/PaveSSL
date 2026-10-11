@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from pavessl import models, utils
 
@@ -57,8 +57,8 @@ def multi_value_classification_metrics(preds: np.ndarray, targets: np.ndarray):
     precision = tps / np.maximum(tps + fps, 1)
     sensitivity = tps / np.maximum(counts, 1)
     specificity = tns / (len(targets) - counts)
-    f1_score = 2 * precision * sensitivity / (
-        np.maximum(precision + sensitivity, 1)
+    f1_score = (
+        2 * precision * sensitivity / (np.maximum(precision + sensitivity, 1))
     )
     # Global metrics
     class_weights = counts / counts.sum()

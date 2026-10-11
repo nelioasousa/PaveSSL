@@ -369,20 +369,6 @@ def add_training_args(
         ),
     )
     parser.add_argument(
-        "--increment",
-        action="store_true",
-        help="Enable increment upon an already finished experiment.",
-    )
-    parser.add_argument(
-        "--increment-suffix",
-        type=str,
-        default="_inc",
-        help=(
-            "Suffix to append to the '--save-folder' of the incremented "
-            "experiment. The results are saved in this suffixed folder."
-        ),
-    )
-    parser.add_argument(
         "--validation-freq",
         type=int,
         default=validation_freq_default,

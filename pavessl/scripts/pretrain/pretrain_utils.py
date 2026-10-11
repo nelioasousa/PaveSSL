@@ -1,8 +1,21 @@
+import pickle
+from argparse import Namespace
 from pathlib import Path
 
 from torch import nn
 
 from pavessl.scripts.eval.knn_eval import knn_eval_all
+
+
+def check_run(experiment_args: Namespace) -> Namespace:
+    args_file_path = experiment_args.results_dir / "run.args"
+    try:
+        with args_file_path.open("rb") as args_file:
+            return pickle.load(args_file)
+    except FileNotFoundError:
+        with args_file_path.open("wb") as args_file:
+            pickle.dump(obj=experiment_args, file=args_file, protocol=5)
+        return experiment_args
 
 
 def backbone_knn_eval(

@@ -3,9 +3,9 @@ import math
 import time
 from typing import Literal
 
-import torch
 import numpy as np
-from torch.utils.data import Dataset, TensorDataset, DataLoader
+import torch
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from pavessl import data, models, utils
 from pavessl.scripts.eval import eval_utils
@@ -136,7 +136,8 @@ def _finetune(
     pos_counts = train_labels.sum(dim=0, keepdim=True)
     pos_weights = len(train_labels) / (2 * pos_counts)
     neg_weights = len(train_labels) / (2 * (len(train_labels) - pos_counts))
-    weights = torch.where(train_labels > 0, pos_weights, neg_weights).sum(dim=-1)
+    weights = torch.where(train_labels > 0, pos_weights, neg_weights)
+    weights = weights.sum(dim=-1)
     valid_dataset = TensorDataset(valid_features, valid_labels)
     train_dataloader = DataLoader(
         dataset=TensorDataset(train_features, train_labels, weights),

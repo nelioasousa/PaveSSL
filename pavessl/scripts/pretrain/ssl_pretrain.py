@@ -1,5 +1,4 @@
 import argparse
-import pickle
 import time
 from itertools import product
 from math import ceil, isfinite
@@ -11,20 +10,6 @@ from torch.utils.data import DataLoader
 from pavessl import models, utils
 from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.pretrain import pretrain_utils
-
-
-def _save_args(args):
-    with (args.results_dir / "run.args").open("wb") as args_file:
-        pickle.dump(obj=args, file=args_file, protocol=5)
-
-
-def _check_run(args):
-    try:
-        with (args.results_dir / "run.args").open("rb") as args_file:
-            return pickle.load(args_file)
-    except FileNotFoundError:
-        _save_args(args)
-        return args
 
 
 def _get_models(device, args):
@@ -180,14 +165,21 @@ def _train_one_epoch(
 
 def _pretrain(args):
     utils.set_random_seeds(42)
-    stored_args = _check_run(args)
     device = utils.get_device()
-    # Previous/stored constructs
-    student, teacher = _get_models(device, stored_args)
-    train_loader = _get_train_data_loader(stored_args)
-    loss_fn = _get_loss_function(device, stored_args)
-    optimizer = models.get_optimizer(student, stored_args.optim)
-    # Restore training vars if any
+    # Check run
+    stored_args = pretrain_utils.check_run(args)
+    if args is not stored_args:
+        print(
+            "Run arguments restored.\n"
+            "Ignoring any argument changes.\n"
+            "Continuing previous training run."
+        )
+        args = stored_args
+    # Restore training
+    student, teacher = _get_models(device, args)
+    train_loader = _get_train_data_loader(args)
+    loss_fn = _get_loss_function(device, args)
+    optimizer = models.get_optimizer(student, args.optim)
     run_variables = {
         "epoch": 0,
         "loss_history": None,
@@ -195,53 +187,19 @@ def _pretrain(args):
         "valid_metrics": None,
     }
     utils.restart_from_checkpoint(
-        ckp_path=(stored_args.results_dir / "checkpoint.pth"),
+        ckp_path=(args.results_dir / "checkpoint.pth"),
         run_variables=run_variables,
         student=student,
         teacher=teacher,
         loss_fn=loss_fn,
         optimizer=optimizer,
     )
-    # Check run state
-    if stored_args is args:
-        pass
-    elif run_variables["epoch"] == stored_args.epochs:
-        if not args.increment:
-            print(f'Training at "{stored_args.results_dir}" already finished.')
-            print("Use --increment to increment upon this training run.")
-            return
-        # Increment finished run
-        args.save_folder = f"{args.save_folder}{args.increment_suffix}"
-        args.results_dir = args.save_dir / args.save_folder
-        args.results_dir.mkdir(exist_ok=True, parents=True)
-        if (args.results_dir / "run.args").is_file():
-            raise ValueError(f'Directory "{args.results_dir}" already in use.')
-        # Check projection dimension mismatch
-        if args.ssl_projection_dim != stored_args.ssl_projection_dim:
-            raise ValueError(
-                "Projection dimension changed from "
-                f"{stored_args.ssl_projection_dim} to {args.ssl_projection_dim}"
-            )
-        _save_args(args)
-        # Re-build with the new arguments
-        train_loader = _get_train_data_loader(args)
-        loss_fn = _get_loss_function(device, args)
-        optimizer = models.get_optimizer(student, args.optim)
-        # Unset run variables
-        run_variables["epoch"] = 0
-        run_variables["loss_history"] = None
-        run_variables["valid_history"] = None
-        run_variables["valid_metrics"] = None
-    else:
-        print(
-            "Run arguments restored.\n"
-            "Ignoring any argument changes.\n"
-            "Continuing previous training run."
-        )
-        args = stored_args
-    print(f'Saving results in "{args.results_dir}".')
     # Run variables
     start_epoch = run_variables["epoch"]
+    if start_epoch == args.epochs:
+        print(f'Training at "{args.results_dir}" already finished.')
+        return
+    print(f'Saving results in "{args.results_dir}".')
     valid_history = run_variables["valid_history"]
     valid_metrics = run_variables["valid_metrics"]
     loss_history = (
@@ -322,20 +280,15 @@ def _pretrain(args):
             if valid_metrics is None:
                 valid_metrics = sorted(student_eval[args.sources[0]][0])
                 num_rows = 1 + ceil((args.epochs - 1) / args.validation_freq)
-                num_cols = (
-                    1
-                    + 2
-                    * len(valid_metrics)
-                    * len(args.sources)
-                    * len(args.knn_ks)
+                num_cols = 1 + 2 * len(valid_metrics) * len(args.sources) * len(
+                    args.knn_ks
                 )
                 valid_history = np.zeros((num_rows, num_cols), dtype=np.float32)
             row_index = ceil(epoch / args.validation_freq)
             valid_history[row_index, 0] = epoch + 1
             valid_history[row_index, 1:] = [
                 metrics[source][k_idx][metric]
-                for metrics, source, k_idx, metric
-                in product(
+                for metrics, source, k_idx, metric in product(
                     (student_eval, teacher_eval),
                     args.sources,
                     range(len(args.knn_ks)),
@@ -374,8 +327,7 @@ def _pretrain(args):
     valid_headers.extend(
         [
             f"{model}__{source}__{k}__{metric}"
-            for model, source, k, metric
-            in product(
+            for model, source, k, metric in product(
                 ("student", "teacher"),
                 args.sources,
                 args.knn_ks,
