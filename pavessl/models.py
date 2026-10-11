@@ -449,9 +449,9 @@ def build_classification_network(
             weights_only=True,
         )
         strict = True
-        if classifier.num_classes != net_state["last_layer.bias"].numel():
-            net_state.pop("last_layer.bias")
-            net_state.pop("last_layer.weight")
+        if classifier.num_classes != net_state["head.last_layer.bias"].numel():
+            net_state.pop("head.last_layer.bias")
+            net_state.pop("head.last_layer.weight")
             strict = False
         classifier.load_state_dict(state_dict=net_state, strict=strict)
         return classifier
