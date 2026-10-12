@@ -97,6 +97,7 @@ def compute_features_and_labels(
     dataset: Dataset,
     batch_size: int,
     num_workers: int,
+    target_label_keys: list[str],
     header: str = "",
 ):
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -111,7 +112,7 @@ def compute_features_and_labels(
     )
     features = None
     labels = None
-    for i, (images, targets) in enumerate(
+    for i, (images, batch_labels) in enumerate(
         metric_logger.log_every(
             iterable=data_loader,
             print_freq=max(5, 5 * len(data_loader) // (5 * 10)),
@@ -119,30 +120,33 @@ def compute_features_and_labels(
             cpu_training=(device.type == "cpu"),
         )
     ):
-        targets = targets["target"]
         if isinstance(images, list):
             images = [imgs.to(device, non_blocking=True) for imgs in images]
-            feats = model(images[0])
+            batch_features = model(images[0])
             for imgs in images[1:]:
-                feats.add_(model(imgs))
-            feats.div_(len(images))
+                batch_features.add_(model(imgs))
+            batch_features.div_(len(images))
         else:
             images = images.to(device, non_blocking=True)
-            feats = model(images)
+            batch_features = model(images)
         if features is None:
             features = torch.empty(
-                size=(len(dataset), *feats.shape[1:]),
-                dtype=feats.dtype,
+                size=(len(dataset), *batch_features.shape[1:]),
+                dtype=batch_features.dtype,
                 device=device,
             )
-            labels = torch.empty(
-                size=(len(dataset), *targets.shape[1:]),
-                dtype=targets.dtype,
-                device=device,
-            )
+            labels = {
+                key: torch.empty(
+                    size=(len(dataset), *batch_labels[key].shape[1:]),
+                    dtype=batch_labels[key].dtype,
+                    device=device,
+                )
+                for key in target_label_keys
+            }
         start = i * batch_size
-        end = start + len(targets)
-        features[start:end].copy_(feats)
-        labels[start:end].copy_(targets)
+        end = start + len(batch_features)
+        features[start:end].copy_(batch_features)
+        for key in target_label_keys:
+            labels[key][start:end].copy_(batch_labels[key])
     features.div_(torch.linalg.vector_norm(features, dim=-1, keepdims=True))
     return features, labels

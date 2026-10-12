@@ -8,7 +8,7 @@ from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
 
 
-def _get_feature_similarities_and_values(
+def _get_feature_similarities_and_targets(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
@@ -21,7 +21,7 @@ def _get_feature_similarities_and_values(
     header: str = "",
 ):
     transform = data.FourPointCrops(crops_target_size, crops_overlap)
-    key_features, key_values = eval_utils.compute_features_and_labels(
+    ref_features, ref_labels = eval_utils.compute_features_and_labels(
         model=model,
         dataset=data.RDD2022(
             data_path=data_path,
@@ -32,12 +32,13 @@ def _get_feature_similarities_and_values(
         ),
         batch_size=batch_size,
         num_workers=num_workers,
+        target_label_keys=["target"],
         header=(
             f"{header}{' ' if header else ''}"
             f"[{target_source}: {ref_split} split]"
         ),
     )
-    query_features, target_values = eval_utils.compute_features_and_labels(
+    eval_features, eval_labels = eval_utils.compute_features_and_labels(
         model=model,
         dataset=data.RDD2022(
             data_path=data_path,
@@ -48,13 +49,14 @@ def _get_feature_similarities_and_values(
         ),
         batch_size=batch_size,
         num_workers=num_workers,
+        target_label_keys=["target"],
         header=(
             f"{header}{' ' if header else ''}"
             f"[{target_source}: {eval_split} split]"
         ),
     )
-    similarities = torch.mm(query_features, key_features.t())
-    return similarities, key_values, target_values
+    similarities = torch.mm(eval_features, ref_features.t())
+    return similarities, ref_labels["target"], eval_labels["target"]
 
 
 @torch.inference_mode()
@@ -74,7 +76,7 @@ def knn_eval_one(
     logging_header: str = "",
 ):
     max_k = max(ks)
-    similarities_and_values = _get_feature_similarities_and_values(
+    similarities_and_targets = _get_feature_similarities_and_targets(
         model=model,
         data_path=data_path,
         target_source=target_source,
@@ -86,26 +88,26 @@ def knn_eval_one(
         eval_split=eval_split,
         header=logging_header,
     )
-    similarities, key_values, target_values = similarities_and_values
+    similarities, ref_targets, eval_targets = similarities_and_targets
     similarities, idxs = similarities.topk(
         k=max_k,
         dim=-1,
         largest=True,
         sorted=True,
     )
-    closest_values = key_values.new_empty((*target_values.shape, max_k))
+    closest_targets = ref_targets.new_empty((*eval_targets.shape, max_k))
     for i in range(max_k):
-        closest_values[..., i].copy_(key_values[idxs[:, i]])
+        closest_targets[..., i].copy_(ref_targets[idxs[:, i]])
     similarities.div_(distance_temperature).exp_().unsqueeze_(dim=1)
-    closest_values.mul_(similarities)
+    closest_targets.mul_(similarities)
     results = []
     for i, k_value in enumerate(ks):
-        probs = closest_values[..., :k_value].sum(dim=-1)
+        probs = closest_targets[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
         preds = torch.where(probs > pred_threshold, 1.0, 0.0)
         metrics = eval_utils.multi_value_classification_metrics(
             preds=preds.cpu().numpy(),
-            targets=target_values.cpu().numpy(),
+            targets=eval_targets.cpu().numpy(),
         )
         results.append(metrics)
     return results

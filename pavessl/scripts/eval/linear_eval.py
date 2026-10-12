@@ -27,7 +27,7 @@ def _predict(
     )
     preds = None
     targets = None
-    for i, (images, labels) in enumerate(data_loader):
+    for i, (images, batch_targets) in enumerate(data_loader):
         batch_preds = classifier(images)
         if preds is None:
             preds = torch.empty(
@@ -36,14 +36,14 @@ def _predict(
                 device=images.device,
             )
             targets = torch.empty(
-                size=(len(dataset), *labels.shape[1:]),
-                dtype=labels.dtype,
-                device=labels.device,
+                size=(len(dataset), *batch_targets.shape[1:]),
+                dtype=batch_targets.dtype,
+                device=batch_targets.device,
             )
         start = i * batch_size
         end = start + len(batch_preds)
         preds[start:end].copy_(batch_preds)
-        targets[start:end].copy_(labels)
+        targets[start:end].copy_(batch_targets)
     preds = preds.sigmoid_()
     preds = torch.where(preds > pred_threshold, 1.0, 0.0)
     return preds.cpu().numpy(), targets.cpu().numpy()
@@ -85,13 +85,14 @@ def _train_one_epoch(
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     epoch_str = str(epoch + 1).rjust(len(str(num_epochs)), "0")
     header = f"(Finetune) Epoch: [{epoch_str}/{num_epochs}]"
-    for it, (features, targets, weights) in enumerate(
+    for it, (features, targets, classes_weights, samples_weight) in enumerate(
         metric_logger.log_every(
             data_loader,
             max(5, 5 * len(data_loader) // (5 * 10)),
             header,
         )
     ):
+        samples_weight.div_(samples_weight.sum())
         it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
@@ -99,7 +100,7 @@ def _train_one_epoch(
         optimizer.param_groups[1]["lr"] = lr_schedule[it]
         # Foward pass and loss computation
         logits = classifier(features)
-        loss = loss_fn(logits, targets, weights.div_(weights.sum()))
+        loss = loss_fn(logits, targets, classes_weights, samples_weight)
         # Loss explosion, unstable training
         loss_value = loss.item()
         if not math.isfinite(loss_value):
@@ -120,9 +121,9 @@ def _train_one_epoch(
 def _finetune(
     classifier: torch.nn.Module,
     train_features: torch.Tensor,
-    train_labels: torch.Tensor,
+    train_labels: dict[str, torch.Tensor],
     valid_features: torch.Tensor,
-    valid_labels: torch.Tensor,
+    valid_labels: dict[str, torch.Tensor],
     lr: float,
     lr_end: float,
     lr_warmup_size: int,
@@ -133,14 +134,20 @@ def _finetune(
     num_epochs: int,
     pred_threshold: float,
 ):
-    pos_counts = train_labels.sum(dim=0, keepdim=True)
-    pos_weights = len(train_labels) / (2 * pos_counts)
-    neg_weights = len(train_labels) / (2 * (len(train_labels) - pos_counts))
-    weights = torch.where(train_labels > 0, pos_weights, neg_weights)
-    weights = weights.sum(dim=-1)
-    valid_dataset = TensorDataset(valid_features, valid_labels)
+    classes_weights = torch.where(
+        train_labels["target"] > 0,
+        train_labels["pos_weights"],
+        train_labels["neg_weights"],
+    )
+    classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
+    valid_dataset = TensorDataset(valid_features, valid_labels["target"])
     train_dataloader = DataLoader(
-        dataset=TensorDataset(train_features, train_labels, weights),
+        dataset=TensorDataset(
+            train_features,
+            train_labels["target"],
+            classes_weights,
+            train_labels["source_weight"],
+        ),
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
@@ -225,6 +232,12 @@ def _main(args):
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        target_label_keys=[
+            "target",
+            "source_weight",
+            "pos_weights",
+            "neg_weights",
+        ],
         header="(Feature extraction: train split)",
     )
     valid_features, valid_labels = eval_utils.compute_features_and_labels(
@@ -237,12 +250,13 @@ def _main(args):
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        target_label_keys=["target"],
         header="(Feature extraction: valid split)",
     )
     classifier = models.build_classification_head(
         state_path=(args.start_points_dir / "linear_eval_head.pth"),
         in_dim=train_features.shape[-1],
-        out_dim=train_labels.shape[-1],
+        out_dim=train_labels["target"].shape[-1],
         num_layers=args.eval_num_layers,
         hidden_dim=args.eval_hidden_dim,
     )
@@ -298,11 +312,12 @@ def _main(args):
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        target_label_keys=["target"],
         header=f"(Linear eval: {args.eval_target_source} test split)",
     )
     results = _eval(
         classifier=classifier,
-        dataset=TensorDataset(test_features, test_labels),
+        dataset=TensorDataset(test_features, test_labels["target"]),
         pred_threshold=args.eval_pred_threshold,
         batch_size=args.batch_size,
     )

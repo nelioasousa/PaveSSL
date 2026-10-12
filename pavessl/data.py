@@ -45,9 +45,8 @@ class RDD2022(Dataset):
         sources: str | list[str] | Literal["all"],
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
-        transform: Transform | None = None,  # transforms v2 API
+        transform: Transform | torch.nn.Module | None = None,
     ):
-        data_path = data_path.resolve()
         if not data_path.is_dir():
             raise NotADirectoryError(f'Not a directory: "{data_path}"')
         all_sources = [s.name for s in data_path.iterdir() if s.is_dir()]
@@ -58,20 +57,21 @@ class RDD2022(Dataset):
             unknown = frozenset(sources).difference(all_sources)
             if unknown:
                 raise ValueError(f"Unknown sources: {list(unknown)}")
-        sources.sort()
-        self.base_dir = data_path
-        self.sources_base_dir = {
-            source: str(data_path / source / split) for source in sources
-        }
-        self.split = split
+        sources = sorted(sources)
         self.sources = sources
+        self.split = split
         self.task = task
         self.transform = transform
+        self.base_dir = data_path
+        self.sources_base_dir = {
+            source: (data_path / source / split).as_posix()
+            for source in sources
+        }
         # Handling sources with different classes
         self.sources_classes = {
-            source: (data_path / source / "classes.txt")
-            .read_text()
-            .splitlines()
+            source: (
+                (data_path / source / "classes.txt").read_text().splitlines()
+            )
             for source in sources
         }
         self.classes = sorted(set().union(*self.sources_classes.values()))
@@ -79,21 +79,12 @@ class RDD2022(Dataset):
             source: [self.classes.index(cls_name) for cls_name in classes]
             for source, classes in self.sources_classes.items()
         }
-        if task == "classification":
-            self.sources_classification_mask = {
-                source: torch.zeros(len(self.classes)).index_fill_(
-                    dim=0,
-                    index=torch.tensor(indexes, dtype=torch.long),
-                    value=1.0,
-                )
-                for source, indexes in self.sources_classes.items()
-            }
         # Not all train images have annotations
         if split == "train" and task != "ssl":
             self.images = {
                 source: [
-                    f"{label.stem}.jpg"
-                    for label in (
+                    f"{annotation.stem}.jpg"
+                    for annotation in (
                         (data_path / f"{source}/{split}/annotations").iterdir()
                     )
                 ]
@@ -112,11 +103,48 @@ class RDD2022(Dataset):
         self.counts = [len(self.images[source]) for source in sources]
         self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
-        # Sources sample weights
-        self.sources_weight = {
-            source: self.acc_counts[-1] / (count * len(self.classes))
-            for source, count in zip(sources, self.counts)
+        self.weights = self._compute_weights()
+
+    def _compute_weights(self):
+        if self.split != "train" or self.task == "detection":
+            weight = {"weight": 1.0}
+            return {source: weight for source in self.sources}
+        weights = {
+            source: {
+                "source_weight": self.acc_counts[-1] / (
+                    count * len(self.sources)
+                )
+            }
+            for source, count in zip(self.sources, self.counts)
         }
+        if self.task == "ssl":
+            return weights
+        for source, count in zip(self.sources, self.counts):
+            source_dir = self.sources_base_dir[source]
+            classes_count = torch.zeros(len(self.classes))
+            for image_name in self.images[source]:
+                ann_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
+                try:
+                    labels = [
+                        self.sources_classes[source][idx]
+                        for idx in load_bboxes(ann_path)["labels"]
+                    ]
+                except FileNotFoundError:
+                    continue
+                classes_count.add_(
+                    torch.zeros(len(self.classes)).index_fill_(
+                        dim=0,
+                        index=torch.tensor(labels, dtype=torch.long),
+                        value=1.0,
+                    )
+                )
+            pos_weights = count / (2 * classes_count).clip(min=1)
+            pos_weights = torch.where(classes_count > 0, pos_weights, 0)
+            neg_weights = count / (2 * (count - classes_count)).clip(min=1)
+            neg_weights = torch.where(classes_count > 0, neg_weights, 0)
+            weights[source]["pos_weights"] = pos_weights
+            weights[source]["neg_weights"] = neg_weights
+        return weights
 
     def __len__(self):
         return self.acc_counts[-1]
@@ -127,10 +155,10 @@ class RDD2022(Dataset):
                 return self.sources[i], index - self.acc_counts[i]
         raise IndexError("Out of range")
 
-    def _load_classific_label(self, label_path, source):
+    def _load_classification_label(self, annotation_path, source):
         labels = [
             self.sources_classes[source][idx]
-            for idx in load_bboxes(label_path)["labels"]
+            for idx in load_bboxes(annotation_path)["labels"]
         ]
         return {
             "target": torch.zeros(len(self.classes)).index_fill_(
@@ -138,12 +166,11 @@ class RDD2022(Dataset):
                 index=torch.tensor(labels, dtype=torch.long),
                 value=1.0,
             ),
-            "weight": self.sources_weight[source],
-            "mask": self.sources_classification_mask[source].clone(),
+            **self.weights[source],
         }
 
-    def _load_detection_label(self, label_path, dim, source):
-        bboxes = load_bboxes(label_path)
+    def _load_detection_label(self, annotation_path, img_dim, source):
+        bboxes = load_bboxes(annotation_path)
         bboxes["labels"] = [
             self.sources_classes[source][idx] for idx in bboxes["labels"]
         ]
@@ -151,11 +178,11 @@ class RDD2022(Dataset):
             "boxes": tv_tensors.BoundingBoxes(
                 data=bboxes["boxes"],
                 format="XYXY",
-                canvas_size=dim,
+                canvas_size=img_dim,
                 clamping_mode="hard",
             ),
             "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
-            "weight": self.sources_weight[source],
+            **self.weights[source],
         }
 
     def __getitem__(self, item_ref: int | tuple[str, int]):
@@ -169,27 +196,27 @@ class RDD2022(Dataset):
         image = Image.open(f"{source_dir}/images/{image_name}").convert("RGB")
         image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
         if self.task == "ssl":
-            if self.transform is None:
-                return image, self.sources_weight[source]
-            return self.transform(image, self.sources_weight[source])
-        label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
-        if self.task == "classification":
-            label = self._load_classific_label(label_path, source)
+            label = self.weights[source]
         else:
-            label = self._load_detection_label(
-                label_path,
-                image.shape[-2:],
-                source,
+            label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
+            label = (
+                self._load_classification_label(label_path, source)
+                if self.task == "classification"
+                else self._load_detection_label(
+                    label_path,
+                    image.shape[-2:],
+                    source,
+                )
             )
         if self.transform is None:
             return image, label
         return self.transform(image, label)
 
     def get_balanced_sampler(self, batch_size: int):
-        return BalancedSampler(self, batch_size)
+        return SourceBalancedSampler(self, batch_size)
 
 
-class BalancedSampler(Sampler[list[tuple[str, int]]]):
+class SourceBalancedSampler(Sampler[list[tuple[str, int]]]):
     def __init__(self, rdd_dataset: RDD2022, batch_size: int):
         self.batch_size = batch_size
         self._sources_count = {
@@ -363,7 +390,7 @@ class SSLMultiviewTransform(torch.nn.Module):
 
     @staticmethod
     def multiview_collate_fn(batch):
-        # `batch` = [([v1, ..., vn], float), ...]
+        # `batch` = [([v1, ..., vn], dict[str, float]), ...]
         B = len(batch)  # batch size
         tensor_dtype = batch[0][0][0].dtype
         # Collating global views
@@ -392,12 +419,12 @@ class SSLMultiviewTransform(torch.nn.Module):
                 dim=0,
                 out=local_views[i * B : (i + 1) * B],
             )
-        # Collating sample weights
-        weights = torch.tensor(
-            [sample[1] for sample in batch],
+        # Collating samples weight
+        samples_weight = torch.tensor(
+            [sample[1]["source_weight"] for sample in batch],
             dtype=tensor_dtype,
         )
-        return global_views, local_views, weights
+        return global_views, local_views, samples_weight
 
 
 class FourPointCrops(transforms_v2.Transform):

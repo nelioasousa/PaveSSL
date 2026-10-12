@@ -4,6 +4,7 @@ from itertools import product
 from math import ceil, isfinite
 
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
@@ -69,21 +70,24 @@ def _train_one_epoch(
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     epoch_str = str(epoch + 1).rjust(len(str(num_epochs)), "0")
     header = f"(Train) Epoch: [{epoch_str}/{num_epochs}]"
-    # More or less 50 log lines per iteration
-    log_every = max(5, 5 * len(data_loader) // (5 * 50))
+    log_every = max(5, 5 * len(data_loader) // (5 * 20))
     for it, (images, labels) in enumerate(
         metric_logger.log_every(data_loader, log_every, header)
     ):
         images = images.to(device=device, non_blocking=True)
-        targets = labels["target"]
-        targets = targets.to(device=device, non_blocking=True)
-        weights = labels["weight"]
-        weights = weights.to(device=device, non_blocking=True)
-        weights.div_(weights.sum())
-        mask = labels["mask"]
-        mask = mask.to(device=device, non_blocking=True)
-        it = len(data_loader) * epoch + it  # Global training iteration
+        classes_weights = torch.where(
+            labels["target"] > 0,
+            labels["pos_weights"],
+            labels["neg_weights"],
+        )
+        targets = labels["target"].to(device=device, non_blocking=True)
+        samples_weight = labels["source_weight"]
+        samples_weight.div_(samples_weight.sum())
+        samples_weight = samples_weight.to(device=device, non_blocking=True)
+        classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
+        classes_weights = classes_weights.to(device=device, non_blocking=True)
         # Only the first group is regularized
+        it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
         optimizer.param_groups[0]["lr"] = lr_schedule[it]
         optimizer.param_groups[1]["lr"] = lr_schedule[it]
@@ -92,11 +96,11 @@ def _train_one_epoch(
         loss = loss_fn(
             logits,
             targets,
-            weights,
-            mask,
+            classes_weights,
+            samples_weight,
         )
-        # Loss explosion, unstable training
-        loss_value = loss.item()  # CPU-GPU synchronization
+        # CHeck for loss explosion
+        loss_value = loss.item()
         if not isfinite(loss_value):
             raise RuntimeError(f"Loss exploded with value {loss_value}")
         # Classifier update
