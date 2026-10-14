@@ -119,6 +119,10 @@ class SmoothedValue:
         self.total += value
 
     @property
+    def total_accumulated(self):
+        return self.total
+
+    @property
     def local_avg(self):
         return sum(self.deque) / len(self.deque)
 
@@ -195,24 +199,21 @@ class MetricLogger:
         header: str = "",
         cpu_training: bool = False,
     ):
-        start_time = time.monotonic()
-        end_time = start_time
         iter_duration = SmoothedValue(fmt="{value:7.3f}")
-        data_duration = SmoothedValue(fmt="{value:7.3f}")
+        self.add_meter("iter", iter_duration)
         log_msg = [
             header,
             f"[{{0:{len(str(len(iterable)))}d}}/{{1}}]",
             "eta: {eta}",
             "{meters}",
-            "time: {time}",
-            "data: {data}",
+            "iter: {time}",
         ]
-        cuda_training = not cpu_training and torch.cuda.is_available()
-        if cuda_training:
+        if not cpu_training:
             log_msg.append("mem: {memory:.0f} MB")
         log_msg = self.delimiter.join(log_msg)
+        start_time = time.monotonic()
+        end_time = start_time
         for i, item in enumerate(iterable):
-            data_duration.update(time.monotonic() - end_time)
             yield item
             iter_duration.update(time.monotonic() - end_time)
             if not (i % print_freq) or i == (len(iterable) - 1):
@@ -225,10 +226,9 @@ class MetricLogger:
                         eta=f"({eta_string})",
                         meters=str(self),
                         time=str(iter_duration),
-                        data=str(data_duration),
                         memory=(
                             torch.cuda.max_memory_allocated() / self.MB
-                            if cuda_training
+                            if not cpu_training
                             else None
                         ),
                     )

@@ -113,11 +113,10 @@ def _train_one_epoch(
             lr=lr_schedule[it].item(),
             wd=wd_schedule[it].item(),
         )
-    # print("Averaged stats:", metric_logger)
-    return metric_logger.meters["loss"]
+    return metric_logger
 
 
-def pretrain(args):
+def _pretrain(args):
     device = utils.get_device()
     # Check run
     stored_args = pretrain_utils.check_run(args)
@@ -160,7 +159,7 @@ def pretrain(args):
     valid_history = run_variables["valid_history"]
     valid_metrics = run_variables["valid_metrics"]
     loss_history = (
-        np.zeros((args.epochs, 3), dtype=np.float32)
+        np.zeros((args.epochs, 4), dtype=np.float32)
         if run_variables["loss_history"] is None
         else run_variables["loss_history"]
     )
@@ -182,7 +181,7 @@ def pretrain(args):
     training_start = time.monotonic()
     for epoch in range(start_epoch, args.epochs):
         utils.set_random_seeds(42 + epoch)
-        loss_log = _train_one_epoch(
+        logger = _train_one_epoch(
             classifier=classifier,
             loss_fn=loss_fn,
             data_loader=train_loader,
@@ -194,9 +193,10 @@ def pretrain(args):
             num_epochs=args.epochs,
         )
         loss_history[epoch] = [
-            loss_log.min_value,
-            loss_log.max_value,
-            loss_log.global_avg,
+            logger.meters["loss"].min_value,
+            logger.meters["loss"].max_value,
+            logger.meters["loss"].global_avg,
+            logger.meters["iter"].total_accumulated,
         ]
         # Run validation
         if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
@@ -253,7 +253,7 @@ def pretrain(args):
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
-        header="min,max,avg",
+        header="min,max,avg,duration",
         comments="",
     )
     valid_headers = ["epoch"]
@@ -320,7 +320,7 @@ def run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
-        pretrain(check_args(args))
+        _pretrain(check_args(args))
         return 0
     except Exception:
         import traceback
