@@ -84,7 +84,7 @@ def save_states(
 
 def restart_from_checkpoint(
     ckp_path: Path,
-    run_variables: dict[str, Any] = dict(),
+    run_variables: dict[str, Any] | None = None,
     **kwargs: dict[str, Any],
 ):
     if not ckp_path.is_file():
@@ -94,6 +94,8 @@ def restart_from_checkpoint(
     for key, value in kwargs.items():
         value.load_state_dict(checkpoint[key])
     # Reload variables
+    if run_variables is None:
+        return
     for var_name in run_variables:
         run_variables[var_name] = checkpoint[var_name]
 

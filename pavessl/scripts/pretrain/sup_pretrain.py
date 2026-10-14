@@ -217,8 +217,8 @@ def _pretrain(args):
             if valid_metrics is None:
                 valid_metrics = sorted(classifier_eval[args.sources[0]][0])
                 num_rows = 1 + ceil((args.epochs - 1) / args.validation_freq)
-                num_cols = 1 + len(valid_metrics) * len(args.sources) * len(
-                    args.knn_ks
+                num_cols = 1 + (
+                    len(valid_metrics) * len(args.sources) * len(args.knn_ks)
                 )
                 valid_history = np.zeros((num_rows, num_cols), dtype=np.float32)
             row_index = ceil(epoch / args.validation_freq)

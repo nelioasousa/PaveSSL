@@ -223,6 +223,7 @@ ProjectionNetwork = TypeVar(
     DualHeadProjectionNetwork,
 )
 
+
 def build_projection_network(
     network_cls: type[ProjectionNetwork],
     network_state_path: str | Path | None = None,

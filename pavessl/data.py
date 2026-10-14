@@ -111,9 +111,8 @@ class RDD2022(Dataset):
             return {source: weight for source in self.sources}
         weights = {
             source: {
-                "source_weight": self.acc_counts[-1] / (
-                    count * len(self.sources)
-                )
+                "source_weight": self.acc_counts[-1]
+                / (count * len(self.sources))
             }
             for source, count in zip(self.sources, self.counts)
         }
