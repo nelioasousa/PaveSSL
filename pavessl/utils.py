@@ -84,18 +84,16 @@ def save_states(
 
 def restart_from_checkpoint(
     ckp_path: Path,
-    run_variables: dict[str, Any] | None = None,
-    **kwargs,
+    run_variables: dict[str, Any] = dict(),
+    **kwargs: dict[str, Any],
 ):
     if not ckp_path.is_file():
         return
     checkpoint = torch.load(ckp_path, map_location="cpu", weights_only=False)
-    # reload torch states
+    # Reload torch states
     for key, value in kwargs.items():
         value.load_state_dict(checkpoint[key])
-    # reload variables
-    if run_variables is None:
-        return
+    # Reload variables
     for var_name in run_variables:
         run_variables[var_name] = checkpoint[var_name]
 
