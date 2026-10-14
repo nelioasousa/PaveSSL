@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar
 
 import numpy as np
 import torch
@@ -217,12 +217,18 @@ class DualHeadProjectionNetwork(SingleHeadProjectionNetwork):
         return x_global, x_local
 
 
+ProjectionNetwork = TypeVar(
+    "ProjectionNetwork",
+    SingleHeadProjectionNetwork,
+    DualHeadProjectionNetwork,
+)
+
 def build_projection_network(
-    network_cls: type[SingleHeadProjectionNetwork | DualHeadProjectionNetwork],
+    network_cls: type[ProjectionNetwork],
     network_state_path: str | Path | None = None,
     backbone_state_path: str | Path | None = None,
     **kwargs,
-) -> SingleHeadProjectionNetwork | DualHeadProjectionNetwork:
+) -> ProjectionNetwork:
     backbone = build_backbone(backbone_state_path)
     model = network_cls(backbone=backbone, **kwargs)
     if network_state_path is None:
