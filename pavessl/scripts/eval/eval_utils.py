@@ -117,7 +117,7 @@ def compute_features_and_labels(
     dataset: Dataset,
     batch_size: int,
     num_workers: int,
-    target_label_keys: list[str],
+    target_label_keys: list[str] | None = None,
     header: str = "",
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -154,6 +154,11 @@ def compute_features_and_labels(
                 size=(len(dataset), *batch_features.shape[1:]),
                 dtype=batch_features.dtype,
                 device=device,
+            )
+            target_label_keys = (
+                list(batch_labels)
+                if target_label_keys is None
+                else target_label_keys
             )
             labels = {
                 key: torch.empty(

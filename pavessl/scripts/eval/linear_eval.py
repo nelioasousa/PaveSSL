@@ -238,12 +238,6 @@ def _main(args):
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        target_label_keys=[
-            "target",
-            "source_weight",
-            "pos_weights",
-            "neg_weights",
-        ],
         header=f"(Features extraction: {args.eval_target_source} train split)",
     )
     valid_features, valid_labels = eval_utils.compute_features_and_labels(
