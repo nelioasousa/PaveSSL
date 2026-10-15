@@ -95,16 +95,14 @@ def metrics_dict_to_pandas(
     classes: list[str],
 ) -> pd.DataFrame:
     metric_names = [
-        metric
-        for metric, value in metrics.items()
-        if isinstance(value, list)
+        metric for metric, value in metrics.items() if isinstance(value, list)
     ]
     aggreg_prefixes = ["macro", "weighted"]
     df_columns = {}
     for metric_name in metric_names:
-        metric_column = metrics[metric_name] + (
-            [metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes]
-        )
+        metric_column = metrics[metric_name] + [
+            metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes
+        ]
         df_columns[metric_name] = metric_column
     df = pd.DataFrame(data=df_columns, index=(classes + aggreg_prefixes))
     df.index.name = "index"

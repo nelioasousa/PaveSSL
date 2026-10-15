@@ -2,8 +2,8 @@ import argparse
 from pathlib import Path
 from typing import Literal
 
-import torch
 import pandas as pd
+import torch
 
 from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
@@ -134,7 +134,10 @@ def knn_eval_all(
     eval_split: Literal["train", "valid", "test"] = "valid",
     as_pandas: bool = False,
     logging_header: str = "",
-) -> dict[str, list[pd.DataFrame]] | dict[str, list[dict[str, float | list[float]]]]:
+) -> (
+    dict[str, list[pd.DataFrame]]
+    | dict[str, list[dict[str, float | list[float]]]]
+):
     return {
         source: knn_eval_one(
             model=model,
