@@ -33,7 +33,7 @@ def _predict(
             preds = torch.empty(
                 size=(len(dataset), *batch_preds.shape[1:]),
                 dtype=batch_preds.dtype,
-                device=images.device,
+                device=batch_preds.device,
             )
             targets = torch.empty(
                 size=(len(dataset), *batch_targets.shape[1:]),
@@ -52,9 +52,9 @@ def _predict(
 def _eval(
     classifier: torch.nn.Module,
     dataset: Dataset,
-    classes: list[str] | None,
     pred_threshold: float,
     batch_size: int,
+    classes: list[str] | None = None,
 ):
     classifier.eval()
     preds, targets = _predict(
@@ -98,8 +98,8 @@ def _train_one_epoch(
         )
     ):
         samples_weight.div_(samples_weight.sum())
-        it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
+        it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
         optimizer.param_groups[0]["lr"] = lr_schedule[it]
         optimizer.param_groups[1]["lr"] = lr_schedule[it]
@@ -145,7 +145,6 @@ def _finetune(
         train_labels["neg_weights"],
     )
     classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
-    valid_dataset = TensorDataset(valid_features, valid_labels["target"])
     train_dataloader = DataLoader(
         dataset=TensorDataset(
             train_features,
@@ -157,6 +156,7 @@ def _finetune(
         shuffle=True,
         drop_last=True,
     )
+    valid_dataset = TensorDataset(valid_features, valid_labels["target"])
     lr_schedule = utils.cosine_scheduler(
         base_value=(lr * batch_size / 256.0),
         final_value=(lr_end * batch_size / 256.0),
@@ -200,7 +200,6 @@ def _finetune(
         valid_results = _eval(
             classifier=classifier,
             dataset=valid_dataset,
-            classes=None,
             pred_threshold=pred_threshold,
             batch_size=batch_size,
         )
@@ -214,8 +213,9 @@ def _finetune(
                 shape=(num_epochs, len(valid_metrics)),
                 dtype=np.float32,
             )
-        for i, metric in enumerate(valid_metrics):
-            valid_history[epoch, i] = valid_results[metric]
+        valid_history[epoch] = [
+            valid_results[metric] for metric in valid_metrics
+        ]
     return classifier, loss_history, valid_metrics, valid_history
 
 
@@ -253,8 +253,13 @@ def _main(args):
         target_label_keys=["target"],
         header=f"(Features extraction: {args.eval_target_source} valid split)",
     )
+    state_filename = "{}_{}l_{}d_linear_eval_net.pth".format(
+        args.eval_target_source,
+        args.eval_num_layers,
+        args.eval_hidden_dim,
+    )
     classifier = models.build_classification_head(
-        state_path=(args.start_points_dir / "linear_eval_head.pth"),
+        state_path=(args.start_points_dir / state_filename),
         in_dim=train_features.shape[-1],
         out_dim=train_labels["target"].shape[-1],
         num_layers=args.eval_num_layers,
@@ -280,8 +285,13 @@ def _main(args):
     del train_features, train_labels
     del valid_features, valid_labels
     # Save finetuned classifier
+    checkpoint_filename = "{}_{}l_{}d_linear_eval_net.pth".format(
+        args.eval_target_source,
+        args.eval_num_layers,
+        args.eval_hidden_dim,
+    )
     utils.save_states(
-        save_file=(args.results_dir / "classification_head.pth"),
+        save_file=(args.results_dir / checkpoint_filename),
         states_dict=classifier.state_dict(),
     )
     # Save finetuning histories
@@ -308,7 +318,6 @@ def _main(args):
         split="test",
         task="classification",
     )
-    classes = dataset.classes
     test_features, test_labels = eval_utils.compute_features_and_labels(
         model=backbone,
         dataset=dataset,
@@ -320,9 +329,9 @@ def _main(args):
     metrics = _eval(
         classifier=classifier,
         dataset=TensorDataset(test_features, test_labels["target"]),
-        classes=classes,
         pred_threshold=args.eval_pred_threshold,
         batch_size=args.batch_size,
+        classes=dataset.classes,
     )
     # Save results
     save_dir = args.experiment_dir / args.eval_save_folder
@@ -385,20 +394,20 @@ def get_args_parser():
         "--eval-crop-scale",
         type=float,
         nargs=2,
-        default=(0.85, 1.0),
+        default=(0.9, 1.0),
         help="Min-max area range for image cropping.",
     )
     parser.add_argument(
         "--eval-num-layers",
         type=int,
-        default=3,
+        default=1,
         help="Number of linear layers in the classification head network.",
     )
     parser.add_argument(
         "--eval-hidden-dim",
         type=int,
-        default=4096,
-        help="Hidden layers dimension in classificaation head network.",
+        default=2048,
+        help="Hidden layers dimension in classification head network.",
     )
     return parser
 
