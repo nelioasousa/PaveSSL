@@ -27,7 +27,7 @@ def _plot_loss_history(
         )
         loss_df = pd.DataFrame(
             data=ckpt["loss_history"][: ckpt["epoch"]],
-            columns=["min", "max", "avg"],
+            columns=["min", "max", "avg", "duration"],
         )
     loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -41,7 +41,8 @@ def _plot_loss_history(
         label="min-max",
     )
     ax.plot("epoch", "avg", data=loss_df, color="red", label="avg")
-    ax.set_xlabel("Epoch")
+    epoch_avg_duration = loss_df["duration"].mean() / 60
+    ax.set_xlabel(f"Epoch [{epoch_avg_duration:.2f} mins/epoch]")
     ax.set_ylabel(f"{metric_name} ({metric_unit})")
     ax.legend()
     ax.grid(axis="y", alpha=0.7, linestyle="--")
@@ -49,13 +50,11 @@ def _plot_loss_history(
     return fig, ax
 
 
-def _plot_valid_history(
+def _plot_knn_valid_history(
     experiment_dir: Path,
+    model_names: list[str],
     save_file: Path,
-    model_names: list[str] | None = None,
 ):
-    model_names = [""] if model_names is None else model_names
-    model_prefixes = [(f"{name}__" if name else "") for name in model_names]
     exp_args = load_exp_arguments(experiment_dir)
     try:
         valid_df = pd.read_csv(experiment_dir / "valid_history.csv", header=0)
@@ -73,34 +72,35 @@ def _plot_valid_history(
             columns=[
                 "epoch",
                 *(
-                    f"{prefix}{source}__{k}__{metric}"
-                    for prefix in model_prefixes
+                    f"{model}__{source}__{k}__{metric}"
+                    for model in model_names
                     for source in exp_args.sources
-                    for k in exp_args.eval_ks
-                    for metric in exp_args.eval_metrics
+                    for k in exp_args.knn_ks
+                    for metric in ckpt["valid_metrics"]
                 ),
             ],
         )
+    eval_metrics = sorted(
+        frozenset(col.split("__")[-1] for col in valid_df.columns[1:])
+    )
     fig, axs = plt.subplots(
-        len(exp_args.eval_metrics),
-        len(exp_args.eval_ks),
-        figsize=(len(exp_args.eval_ks) * 6, len(exp_args.eval_metrics) * 4),
+        len(eval_metrics),
+        len(exp_args.knn_ks),
+        figsize=(len(exp_args.knn_ks) * 6, len(eval_metrics) * 4),
         sharex=True,
         sharey="row",
     )
     for (x, metric), (y, k_value), (color_index, source) in product(
-        enumerate(exp_args.eval_metrics),
-        enumerate(exp_args.eval_ks),
+        enumerate(eval_metrics),
+        enumerate(exp_args.knn_ks),
         enumerate(exp_args.sources),
     ):
         ax = axs[x, y]
-        for z, (prefix, ls) in enumerate(
-            zip(model_prefixes, ("solid", "dotted"))
-        ):
-            label_suffix = f" ({model_names[z]})" if model_names[z] else ""
+        for model_name, ls in zip(model_names, ("solid", "dotted")):
+            label_suffix = "" if len(model_names) < 2 else f" ({model_name})"
             ax.plot(
                 "epoch",
-                f"{prefix}{source}__{k_value}__{metric}",
+                f"{model_name}__{source}__{k_value}__{metric}",
                 data=valid_df,
                 label=f"{source}{label_suffix}",
                 color=f"C{color_index}",
@@ -109,12 +109,12 @@ def _plot_valid_history(
         ax.grid(axis="y", alpha=0.6, linestyle="--")
         if not x:
             ax.set_title(f"K = {k_value}")
-        if x == len(exp_args.eval_metrics) - 1:
+        if x + 1 == len(eval_metrics):
             ax.set_xlabel("Epoch")
         if not y:
             ax.set_ylabel(f"{metric.upper()} (%)")
             ax.legend(ncols=2)
-        if y == len(exp_args.eval_ks) - 1:
+        if y + 1 == len(exp_args.knn_ks):
             ax.tick_params(
                 axis="y",
                 left=False,
@@ -146,7 +146,7 @@ def get_args_parser():
         help="Directory in which the SSL pre-training experiments are stored.",
     )
     parser.add_argument(
-        "--ssl-pretrain-exps",
+        "--ssl-exps",
         type=str,
         nargs="*",
         default=[],
@@ -162,7 +162,7 @@ def get_args_parser():
         ),
     )
     parser.add_argument(
-        "--sup-pretrain-exps",
+        "--sup-exps",
         type=str,
         nargs="*",
         default=[],
@@ -173,7 +173,7 @@ def get_args_parser():
 
 def _main(args):
     # Self-supervised pre-training
-    for ssl_exp in args.ssl_pretrain_exps:
+    for ssl_exp in args.ssl_exps:
         exp_dir = args.ssl_pretrain_dir / ssl_exp
         plots_dir = exp_dir / args.save_folder
         plots_dir.mkdir(exist_ok=True)
@@ -183,13 +183,13 @@ def _main(args):
             metric_unit="nats",
             save_file=(plots_dir / "loss_history.png"),
         )
-        _ = _plot_valid_history(
+        _ = _plot_knn_valid_history(
             experiment_dir=exp_dir,
-            save_file=(plots_dir / "valid_history.png"),
             model_names=("student", "teacher"),
+            save_file=(plots_dir / "valid_history.png"),
         )
     # Supervised pre-training
-    for sup_exp in args.sup_pretrain_exps:
+    for sup_exp in args.sup_exps:
         exp_dir = args.sup_pretrain_dir / sup_exp
         plots_dir = exp_dir / args.save_folder
         plots_dir.mkdir(exist_ok=True)
@@ -199,8 +199,9 @@ def _main(args):
             metric_unit="1",
             save_file=(plots_dir / "loss_history.png"),
         )
-        _ = _plot_valid_history(
+        _ = _plot_knn_valid_history(
             experiment_dir=exp_dir,
+            model_names=("classifier",),
             save_file=(plots_dir / "valid_history.png"),
         )
 
