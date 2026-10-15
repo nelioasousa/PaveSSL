@@ -64,7 +64,7 @@ def multi_value_classification_metrics(
     accuracy = (tps + tns) / len(targets)
     precision = tps / np.maximum(tps + fps, 1)
     sensitivity = tps / np.maximum(counts, 1)
-    specificity = tns / (len(targets) - counts)
+    specificity = tns / np.maximum(len(targets) - counts, 1)
     f1_score = (
         2 * precision * sensitivity / np.maximum(precision + sensitivity, 1)
     )
