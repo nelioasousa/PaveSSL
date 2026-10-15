@@ -120,7 +120,7 @@ def _train_one_epoch(
             lr=lr_schedule[it].item(),
             wd=wd_schedule[it].item(),
         )
-    return metric_logger.meters["loss"]
+    return metric_logger
 
 
 def _finetune(
@@ -170,7 +170,7 @@ def _finetune(
         epochs=num_epochs,
         niter_per_ep=len(train_dataloader),
     )
-    loss_history = np.zeros((num_epochs, 3), dtype=np.float32)
+    loss_history = np.zeros((num_epochs, 4), dtype=np.float32)
     valid_history = None
     valid_metrics = None
     loss_fn = models.MultiValueClassificationLoss()
@@ -181,7 +181,7 @@ def _finetune(
     optimizer = models.get_optimizer(target_model=classifier, which=optim)
     for epoch in range(num_epochs):
         # Finetune step
-        loss_log = _train_one_epoch(
+        logger = _train_one_epoch(
             classifier=classifier,
             data_loader=train_dataloader,
             loss_fn=loss_fn,
@@ -192,9 +192,10 @@ def _finetune(
             num_epochs=num_epochs,
         )
         loss_history[epoch] = [
-            loss_log.min_value,
-            loss_log.max_value,
-            loss_log.global_avg,
+            logger.meters["loss"].min_value,
+            logger.meters["loss"].max_value,
+            logger.meters["loss"].global_avg,
+            logger.meters["iter"].total_accumulated,
         ]
         # Validation step
         valid_results = _eval(
@@ -300,7 +301,7 @@ def _main(args):
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
-        header="min,max,avg",
+        header="min,max,avg,duration",
         comments="",
     )
     np.savetxt(
