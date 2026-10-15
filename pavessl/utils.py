@@ -208,7 +208,6 @@ class MetricLogger:
             f"[{{0:{len(str(len(iterable)))}d}}/{{1}}]",
             "eta: {eta}",
             "{meters}",
-            "iter: {time}",
         ]
         if not cpu_training:
             log_msg.append("mem: {memory:.0f} MB")
@@ -227,11 +226,10 @@ class MetricLogger:
                         len(iterable),
                         eta=f"({eta_string})",
                         meters=str(self),
-                        time=str(iter_duration),
                         memory=(
-                            torch.cuda.max_memory_allocated() / self.MB
-                            if not cpu_training
-                            else None
+                            None
+                            if cpu_training
+                            else torch.cuda.max_memory_allocated() / self.MB
                         ),
                     )
                 )
@@ -469,6 +467,12 @@ def add_knn_eval_args(parser: argparse.ArgumentParser):
         type=float,
         default=0.3,
         help="Threshold for kNN prediction.",
+    )
+    parser.add_argument(
+        "--knn-batch-size",
+        type=int,
+        default=32,
+        help="Batch size for kNN evaluation.",
     )
     return parser
 

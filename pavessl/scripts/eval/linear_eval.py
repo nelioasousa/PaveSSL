@@ -52,6 +52,7 @@ def _predict(
 def _eval(
     classifier: torch.nn.Module,
     dataset: Dataset,
+    classes: list[str] | None,
     pred_threshold: float,
     batch_size: int,
 ):
@@ -62,7 +63,11 @@ def _eval(
         pred_threshold=pred_threshold,
         batch_size=batch_size,
     )
-    return eval_utils.multi_value_classification_metrics(preds, targets)
+    return eval_utils.multi_value_classification_metrics(
+        preds,
+        targets,
+        classes,
+    )
 
 
 def _train_one_epoch(
@@ -195,15 +200,16 @@ def _finetune(
         valid_results = _eval(
             classifier=classifier,
             dataset=valid_dataset,
+            classes=None,
             pred_threshold=pred_threshold,
             batch_size=batch_size,
         )
         if valid_history is None:
-            valid_metrics = [
+            valid_metrics = sorted(
                 metric
                 for metric, value in valid_results.items()
                 if isinstance(value, float)
-            ]
+            )
             valid_history = np.zeros(
                 shape=(num_epochs, len(valid_metrics)),
                 dtype=np.float32,
@@ -217,7 +223,7 @@ def _main(args):
     utils.set_random_seeds(42)
     device = utils.get_device()
     backbone = eval_utils.load_experiment_backbone(
-        exp_dir=args.experiment_dir,
+        experiment_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
     backbone = backbone.to(device=device, non_blocking=True)
@@ -226,7 +232,7 @@ def _main(args):
         model=backbone,
         dataset=data.RDD2022(
             data_path=args.data,
-            sources=args.sources,
+            sources=args.eval_target_source,
             split="train",
             task="classification",
         ),
@@ -238,20 +244,20 @@ def _main(args):
             "pos_weights",
             "neg_weights",
         ],
-        header="(Feature extraction: train split)",
+        header=f"(Features extraction: {args.eval_target_source} train split)",
     )
     valid_features, valid_labels = eval_utils.compute_features_and_labels(
         model=backbone,
         dataset=data.RDD2022(
             data_path=args.data,
-            sources=args.sources,
+            sources=args.eval_target_source,
             split="valid",
             task="classification",
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         target_label_keys=["target"],
-        header="(Feature extraction: valid split)",
+        header=f"(Features extraction: {args.eval_target_source} valid split)",
     )
     classifier = models.build_classification_head(
         state_path=(args.start_points_dir / "linear_eval_head.pth"),
@@ -302,29 +308,39 @@ def _main(args):
         comments="",
     )
     # Linear evaluation
+    dataset = data.RDD2022(
+        data_path=args.data,
+        sources=args.eval_target_source,
+        split="test",
+        task="classification",
+    )
+    classes = dataset.classes
     test_features, test_labels = eval_utils.compute_features_and_labels(
         model=backbone,
-        dataset=data.RDD2022(
-            data_path=args.data,
-            sources=args.eval_target_source,
-            split="test",
-            task="classification",
-        ),
+        dataset=dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         target_label_keys=["target"],
         header=f"(Linear eval: {args.eval_target_source} test split)",
     )
-    results = _eval(
+    metrics = _eval(
         classifier=classifier,
         dataset=TensorDataset(test_features, test_labels["target"]),
+        classes=classes,
         pred_threshold=args.eval_pred_threshold,
         batch_size=args.batch_size,
     )
     # Save results
-    for metric, values in results.items():
-        print(f"{metric=}:")
-        print(values, end="\n\n")
+    save_dir = args.experiment_dir / args.eval_save_folder
+    save_dir.mkdir(exist_ok=True)
+    index_name_pad = max(len(name) for name in metrics.index)
+    metrics.index = metrics.index.str.pad(width=index_name_pad)
+    metrics.to_csv(
+        save_dir / "linear_eval.csv",
+        float_format="%.5f",
+        header=True,
+        index=True,
+    )
     # Report duration
     duration = int(time.monotonic() - start_time)
     print(f"Linear evaluation ended in {utils.get_time_string(duration)}!")
@@ -358,7 +374,7 @@ def get_args_parser():
         weight_decay_default=0.01,
         weight_decay_end_default=0.1,
     )
-    parser = eval_utils.add_eval_args(parser, "linear_eval.csv")
+    parser = eval_utils.add_eval_args(parser)
     parser.add_argument(
         "--eval-pred-threshold",
         type=float,

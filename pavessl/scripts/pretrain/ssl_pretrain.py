@@ -260,7 +260,7 @@ def _pretrain(args):
                 pred_threshold=args.knn_pred_threshold,
                 crops_target_size=args.knn_crops_target_size,
                 crops_overlap=args.knn_crops_overlap,
-                batch_size=args.batch_size,
+                batch_size=args.knn_batch_size,
                 num_workers=args.num_workers,
                 logging_header="(Eval/Student)",
             )
@@ -273,7 +273,7 @@ def _pretrain(args):
                 pred_threshold=args.knn_pred_threshold,
                 crops_target_size=args.knn_crops_target_size,
                 crops_overlap=args.knn_crops_overlap,
-                batch_size=args.batch_size,
+                batch_size=args.knn_batch_size,
                 num_workers=args.num_workers,
                 logging_header="(Eval/Teacher)",
             )

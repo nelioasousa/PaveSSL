@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Literal
 
 import torch
+import pandas as pd
 
 from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
 
 
-def _get_feature_similarities_and_targets(
+def _get_features_similarities_and_targets(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
@@ -21,15 +22,17 @@ def _get_feature_similarities_and_targets(
     header: str = "",
 ):
     transform = data.FourPointCrops(crops_target_size, crops_overlap)
+    dataset = data.RDD2022(
+        data_path=data_path,
+        sources=target_source,
+        split=ref_split,
+        task="classification",
+        transform=transform,
+    )
+    classes = dataset.classes
     ref_features, ref_labels = eval_utils.compute_features_and_labels(
         model=model,
-        dataset=data.RDD2022(
-            data_path=data_path,
-            sources=target_source,
-            split=ref_split,
-            task="classification",
-            transform=transform,
-        ),
+        dataset=dataset,
         batch_size=batch_size,
         num_workers=num_workers,
         target_label_keys=["target"],
@@ -56,7 +59,7 @@ def _get_feature_similarities_and_targets(
         ),
     )
     similarities = torch.mm(eval_features, ref_features.t())
-    return similarities, ref_labels["target"], eval_labels["target"]
+    return classes, similarities, ref_labels["target"], eval_labels["target"]
 
 
 @torch.inference_mode()
@@ -73,10 +76,11 @@ def knn_eval_one(
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
+    as_pandas: bool = False,
     logging_header: str = "",
-):
+) -> list[pd.DataFrame] | list[dict[str, float | list[float]]]:
     max_k = max(ks)
-    similarities_and_targets = _get_feature_similarities_and_targets(
+    classes, *sim_and_targets = _get_features_similarities_and_targets(
         model=model,
         data_path=data_path,
         target_source=target_source,
@@ -88,7 +92,7 @@ def knn_eval_one(
         eval_split=eval_split,
         header=logging_header,
     )
-    similarities, ref_targets, eval_targets = similarities_and_targets
+    similarities, ref_targets, eval_targets = sim_and_targets
     similarities, idxs = similarities.topk(
         k=max_k,
         dim=-1,
@@ -105,11 +109,13 @@ def knn_eval_one(
         probs = closest_targets[..., :k_value].sum(dim=-1)
         probs.div_(similarities[..., :k_value].sum(dim=-1))
         preds = torch.where(probs > pred_threshold, 1.0, 0.0)
-        metrics = eval_utils.multi_value_classification_metrics(
-            preds=preds.cpu().numpy(),
-            targets=eval_targets.cpu().numpy(),
+        results.append(
+            eval_utils.multi_value_classification_metrics(
+                preds=preds.cpu().numpy(),
+                targets=eval_targets.cpu().numpy(),
+                classes=(classes if as_pandas else None),
+            )
         )
-        results.append(metrics)
     return results
 
 
@@ -126,8 +132,9 @@ def knn_eval_all(
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
+    as_pandas: bool = False,
     logging_header: str = "",
-):
+) -> dict[str, list[pd.DataFrame]] | dict[str, list[dict[str, float | list[float]]]]:
     return {
         source: knn_eval_one(
             model=model,
@@ -142,6 +149,7 @@ def knn_eval_all(
             num_workers=num_workers,
             ref_split=ref_split,
             eval_split=eval_split,
+            as_pandas=as_pandas,
             logging_header=logging_header,
         )
         for source in target_sources
@@ -150,7 +158,7 @@ def knn_eval_all(
 
 def _main(args):
     backbone = eval_utils.load_experiment_backbone(
-        exp_dir=args.experiment_dir,
+        experiment_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
     device = utils.get_device()
@@ -164,16 +172,27 @@ def _main(args):
         pred_threshold=args.knn_pred_threshold,
         crops_target_size=args.knn_crops_target_size,
         crops_overlap=args.knn_crops_overlap,
-        batch_size=args.batch_size,
+        batch_size=args.knn_batch_size,
         num_workers=args.num_workers,
         ref_split=args.ref_split,
         eval_split=args.eval_split,
+        as_pandas=True,
         logging_header="(kNN Eval)",
     )
     # Save results
-    for metric in args.knn_metrics:
-        print(f"{metric=}:")
-        print(results[metric], end="\n\n")
+    save_dir = args.experiment_dir / args.eval_save_folder
+    save_dir.mkdir(exist_ok=True)
+    k_padding = len(str(max(args.knn_ks)))
+    for k_value, metrics in zip(args.knn_ks, results):
+        k_value_str = str(k_value).rjust(k_padding, "0")
+        index_name_pad = max(len(name) for name in metrics.index)
+        metrics.index = metrics.index.str.pad(width=index_name_pad)
+        metrics.to_csv(
+            save_dir / f"knn_eval_k{k_value_str}.csv",
+            float_format="%.5f",
+            header=True,
+            index=True,
+        )
 
 
 def get_args_parser():
@@ -181,7 +200,7 @@ def get_args_parser():
         description="Run k-NN evaluation on a pretrained backbone.",
     )
     parser = utils.add_data_arg(parser)
-    parser = eval_utils.add_eval_args(parser, "knn_eval.csv")
+    parser = eval_utils.add_eval_args(parser)
     parser = utils.add_knn_eval_args(parser)
     parser.add_argument(
         "--ref-split",
@@ -195,7 +214,6 @@ def get_args_parser():
         default="test",
         help="Which split to evaluate.",
     )
-    parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=4)
     return parser
 

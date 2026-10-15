@@ -2,13 +2,15 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
+import torchvision
 from torch.utils.data import DataLoader, Dataset
 
 from pavessl import models, utils
 
 
-def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
+def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
     parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
     parser.add_argument(
@@ -26,14 +28,16 @@ def add_eval_args(parser: ArgumentParser, save_csv_name: str) -> ArgumentParser:
         default="India",
     )
     parser.add_argument("--eval-save-folder", type=str, default="evals")
-    parser.add_argument("--eval-save-file", type=str, default=save_csv_name)
     return parser
 
 
-def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
+def load_experiment_backbone(
+    experiment_dir: Path,
+    checkpoint_key: str,
+) -> torchvision.models.ResNet:
     backbone = models.build_backbone(None)
     state_dict = torch.load(
-        f=(exp_dir / "checkpoint.pth"),
+        f=(experiment_dir / "checkpoint.pth"),
         map_location="cpu",
         weights_only=False,
     )
@@ -47,48 +51,64 @@ def load_experiment_backbone(exp_dir: Path, checkpoint_key: str):
     return backbone
 
 
-def multi_value_classification_metrics(preds: np.ndarray, targets: np.ndarray):
+def multi_value_classification_metrics(
+    preds: np.ndarray,
+    targets: np.ndarray,
+    classes: list[str] | None = None,
+) -> dict[str, float | list[float]] | pd.DataFrame:
     tps = (preds * targets).sum(axis=0)
     fps = (preds * (1.0 - targets)).sum(axis=0)
     tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
-    # Per-class metrics
     counts = targets.sum(axis=0)
+    class_weights = counts / counts.sum()
     accuracy = (tps + tns) / len(targets)
     precision = tps / np.maximum(tps + fps, 1)
     sensitivity = tps / np.maximum(counts, 1)
     specificity = tns / (len(targets) - counts)
     f1_score = (
-        2 * precision * sensitivity / (np.maximum(precision + sensitivity, 1))
+        2 * precision * sensitivity / np.maximum(precision + sensitivity, 1)
     )
-    # Global metrics
-    class_weights = counts / counts.sum()
-    macro_accuracy = accuracy.mean().item()
-    weighted_accuracy = (accuracy * class_weights).sum().item()
-    macro_precision = precision.mean().item()
-    weighted_precision = (precision * class_weights).sum().item()
-    macro_sensitivity = sensitivity.mean().item()
-    weighted_sensitivity = (sensitivity * class_weights).sum().item()
-    macro_specificity = specificity.mean().item()
-    weighted_specificity = (specificity * class_weights).sum().item()
-    macro_f1_score = f1_score.mean().item()
-    weighted_f1_score = (f1_score * class_weights).sum().item()
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "sensitivity": sensitivity,
-        "specificity": specificity,
-        "f1_score": f1_score,
-        "macro_accuracy": macro_accuracy,
-        "weighted_accuracy": weighted_accuracy,
-        "macro_precision": macro_precision,
-        "weighted_precision": weighted_precision,
-        "macro_sensitivity": macro_sensitivity,
-        "weighted_sensitivity": weighted_sensitivity,
-        "macro_specificity": macro_specificity,
-        "weighted_specificity": weighted_specificity,
-        "macro_f1_score": macro_f1_score,
-        "weighted_f1_score": weighted_f1_score,
+    metrics: dict[str, float | list[float]] = {
+        "accuracy": accuracy.tolist(),
+        "precision": precision.tolist(),
+        "sensitivity": sensitivity.tolist(),
+        "specificity": specificity.tolist(),
+        "f1_score": f1_score.tolist(),
+        "macro_accuracy": accuracy.mean().item(),
+        "weighted_accuracy": (accuracy * class_weights).sum().item(),
+        "macro_precision": precision.mean().item(),
+        "weighted_precision": (precision * class_weights).sum().item(),
+        "macro_sensitivity": sensitivity.mean().item(),
+        "weighted_sensitivity": (sensitivity * class_weights).sum().item(),
+        "macro_specificity": specificity.mean().item(),
+        "weighted_specificity": (specificity * class_weights).sum().item(),
+        "macro_f1_score": f1_score.mean().item(),
+        "weighted_f1_score": (f1_score * class_weights).sum().item(),
     }
+    if classes is None:
+        return metrics
+    return metrics_dict_to_pandas(metrics, classes)
+
+
+def metrics_dict_to_pandas(
+    metrics: dict[str, float | list[float]],
+    classes: list[str],
+) -> pd.DataFrame:
+    metric_names = [
+        metric
+        for metric, value in metrics.items()
+        if isinstance(value, list)
+    ]
+    aggreg_prefixes = ["macro", "weighted"]
+    df_columns = {}
+    for metric_name in metric_names:
+        metric_column = metrics[metric_name] + (
+            [metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes]
+        )
+        df_columns[metric_name] = metric_column
+    df = pd.DataFrame(data=df_columns, index=(classes + aggreg_prefixes))
+    df.index.name = "index"
+    return df
 
 
 @torch.inference_mode()
@@ -99,7 +119,7 @@ def compute_features_and_labels(
     num_workers: int,
     target_label_keys: list[str],
     header: str = "",
-):
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     metric_logger = utils.MetricLogger(delimiter="  ")
     device = next(model.parameters()).device
     data_loader = DataLoader(
