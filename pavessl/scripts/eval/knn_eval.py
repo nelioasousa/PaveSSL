@@ -191,7 +191,7 @@ def _main(args):
         index_name_pad = max(len(name) for name in metrics.index)
         metrics.index = metrics.index.str.pad(width=index_name_pad)
         metrics.to_csv(
-            save_dir / f"knn_eval_k{k_value_str}.csv",
+            save_dir / f"knn_eval_{args.eval_target_source}_k{k_value_str}.csv",
             float_format="%.5f",
             header=True,
             index=True,

@@ -335,12 +335,17 @@ def _main(args):
         classes=dataset.classes,
     )
     # Save results
+    metrics_filename = "linear_eval_{0}_{1}l_{2}d.csv".format(
+        args.eval_target_source,
+        args.eval_num_layers,
+        args.eval_hidden_dim,
+    )
     save_dir = args.experiment_dir / args.eval_save_folder
     save_dir.mkdir(exist_ok=True)
     index_name_pad = max(len(name) for name in metrics.index)
     metrics.index = metrics.index.str.pad(width=index_name_pad)
     metrics.to_csv(
-        save_dir / "linear_eval.csv",
+        save_dir / metrics_filename,
         float_format="%.5f",
         header=True,
         index=True,
@@ -355,7 +360,11 @@ def check_args(args: argparse.Namespace) -> argparse.Namespace:
         args.experiment_dir if args.save_dir is None else args.save_dir
     )
     args.save_folder = (
-        "linear_eval_finetuning"
+        "linear_eval_{0}_{1}l_{2}d".format(
+            args.eval_target_source,
+            args.eval_num_layers,
+            args.eval_hidden_dim,
+        )
         if args.save_folder is None
         else args.save_folder
     )
