@@ -66,23 +66,20 @@ def _plot_knn_valid_history(
             map_location="cpu",
             weights_only=False,
         )
-        index = ckpt["epoch"] // exp_args.validation_freq
         valid_df = pd.DataFrame(
-            data=ckpt["valid_history"][:index],
+            data=ckpt["valid_history"][: ckpt["epoch"]],
             columns=[
-                "epoch",
-                *(
-                    f"{model}__{source}__{k}__{metric}"
-                    for model in model_names
-                    for source in exp_args.sources
-                    for k in exp_args.knn_ks
-                    for metric in ckpt["valid_metrics"]
-                ),
+                f"{model}__{source}__{k}__{metric}"
+                for model in model_names
+                for source in exp_args.sources
+                for k in exp_args.knn_ks
+                for metric in ckpt["valid_metrics"]
             ],
         )
     eval_metrics = sorted(
-        frozenset(col.split("__")[-1] for col in valid_df.columns[1:])
+        frozenset(col.split("__")[-1] for col in valid_df.columns)
     )
+    valid_df["epoch"] = np.arange(1, len(valid_df) + 1)
     fig, axs = plt.subplots(
         len(eval_metrics),
         len(exp_args.knn_ks),

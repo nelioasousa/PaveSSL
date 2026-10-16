@@ -271,7 +271,6 @@ def add_training_args(
     weight_decay_default: float = 0.04,
     weight_decay_end_default: float = 0.4,
     optim_default: Literal["adamw", "sgd"] = "adamw",
-    validation_freq_default: int = 1,
     checkpoint_freq_default: int = 25,
 ) -> argparse.ArgumentParser:
     parser.add_argument(
@@ -367,12 +366,6 @@ def add_training_args(
         ),
     )
     parser.add_argument(
-        "--validation-freq",
-        type=int,
-        default=validation_freq_default,
-        help="Validation evaluation frequency in epochs.",
-    )
-    parser.add_argument(
         "--checkpoint-freq",
         type=int,
         default=checkpoint_freq_default,
@@ -411,9 +404,6 @@ def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
     args.sources = get_rdd2022_sources(args.sources_subset)
     args.epochs = max(1, args.epochs)
     args.batch_size = max(1, args.batch_size)
-    args.validation_freq = (
-        args.validation_freq if args.validation_freq > 0 else (args.epochs - 1)
-    )
     args.checkpoint_freq = (
         args.checkpoint_freq if args.checkpoint_freq > 0 else (args.epochs - 1)
     )

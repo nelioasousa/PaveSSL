@@ -200,38 +200,34 @@ def _pretrain(args):
             logger.meters["iter"].total_accumulated,
         ]
         # Run validation
-        if not (epoch % args.validation_freq) or (epoch + 1) == args.epochs:
-            eval_start = time.monotonic()
-            classifier_eval = pretrain_utils.backbone_knn_eval(
-                backbone=classifier.backbone,
-                data_path=args.data,
-                target_sources=args.sources,
-                ks=args.knn_ks,
-                distance_temperature=args.knn_dist_temperature,
-                pred_threshold=args.knn_pred_threshold,
-                crops_target_size=args.knn_crops_target_size,
-                crops_overlap=args.knn_crops_overlap,
-                batch_size=args.knn_batch_size,
-                num_workers=args.num_workers,
-                logging_header="(Eval/Classifier)",
+        eval_start = time.monotonic()
+        classifier_eval = pretrain_utils.backbone_knn_eval(
+            backbone=classifier.backbone,
+            data_path=args.data,
+            target_sources=args.sources,
+            ks=args.knn_ks,
+            distance_temperature=args.knn_dist_temperature,
+            pred_threshold=args.knn_pred_threshold,
+            crops_target_size=args.knn_crops_target_size,
+            crops_overlap=args.knn_crops_overlap,
+            batch_size=args.knn_batch_size,
+            num_workers=args.num_workers,
+            logging_header="(Eval/Classifier)",
+        )
+        if valid_metrics is None:
+            valid_metrics = sorted(classifier_eval[args.sources[0]][0])
+            num_cols = len(valid_metrics) * len(args.sources) * len(args.knn_ks)
+            valid_history = np.zeros((args.epochs, num_cols), dtype=np.float32)
+        valid_history[epoch] = [
+            classifier_eval[source][k_idx][metric]
+            for source, k_idx, metric in product(
+                args.sources,
+                range(len(args.knn_ks)),
+                valid_metrics,
             )
-            if valid_metrics is None:
-                valid_metrics = sorted(classifier_eval[args.sources[0]][0])
-                num_rows = 1 + ceil((args.epochs - 1) / args.validation_freq)
-                num_cols = 1 + (
-                    len(valid_metrics) * len(args.sources) * len(args.knn_ks)
-                )
-                valid_history = np.zeros((num_rows, num_cols), dtype=np.float32)
-            row_index = ceil(epoch / args.validation_freq)
-            valid_history[row_index, 0] = epoch + 1
-            valid_history[row_index, 1:] = [
-                classifier_eval[source][k_idx][metric]
-                for source, k_idx, metric in product(
-                    args.sources, range(len(args.knn_ks)), valid_metrics
-                )
-            ]
-            duration = int(time.monotonic() - eval_start)
-            print(f"Validation ended in {utils.get_time_string(duration)}!")
+        ]
+        duration = int(time.monotonic() - eval_start)
+        print(f"Validation took {utils.get_time_string(duration)}.")
         # Save checkpoints
         check_start = time.monotonic()
         states_dict = {
@@ -263,20 +259,19 @@ def _pretrain(args):
         header="min,max,avg,duration",
         comments="",
     )
-    valid_headers = ["epoch"]
-    valid_headers.extend(
-        [
-            f"classifier__{source}__{k}__{metric}"
-            for source, k, metric in product(
-                args.sources, args.knn_ks, valid_metrics
-            )
-        ]
-    )
+    valid_headers = [
+        f"classifier__{source}__{k}__{metric}"
+        for source, k, metric in product(
+            args.sources,
+            args.knn_ks,
+            valid_metrics,
+        )
+    ]
     np.savetxt(
         fname=(args.results_dir / "valid_history.csv"),
         X=valid_history,
         delimiter=",",
-        fmt=(["%04d"] + ["%.4f"] * (len(valid_headers) - 1)),
+        fmt=(["%.4f"] * len(valid_headers)),
         header=(",".join(valid_headers)),
         comments="",
     )
