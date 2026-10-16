@@ -229,7 +229,6 @@ def _pretrain(args):
         duration = int(time.monotonic() - eval_start)
         print(f"Validation took {utils.get_time_string(duration)}.")
         # Save checkpoints
-        check_start = time.monotonic()
         states_dict = {
             "classifier": classifier.state_dict(),
             "loss_fn": loss_fn.state_dict(),
@@ -248,8 +247,6 @@ def _pretrain(args):
                 else states_dict["epoch"]
             ),
         )
-        duration = int(time.monotonic() - check_start)
-        print(f"Checkpointing took {utils.get_time_string(duration)}.")
     # Save histories and report run duration
     np.savetxt(
         fname=(args.results_dir / "loss_history.csv"),
