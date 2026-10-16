@@ -31,7 +31,7 @@ def _get_train_data_loader(args):
 
 
 def _get_classifier(num_classes, device, args):
-    state_filename = f"sup_classifier_{num_classes}c_net.pth"
+    state_filename = f"sup_classifier_src{args.sources_subset}_net.pth"
     classifier = models.build_classification_network(
         network_state_path=(args.start_points_dir / state_filename),
         backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
