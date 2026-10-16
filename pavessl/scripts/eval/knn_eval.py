@@ -177,8 +177,8 @@ def _main(args):
         crops_overlap=args.knn_crops_overlap,
         batch_size=args.knn_batch_size,
         num_workers=args.num_workers,
-        ref_split=args.ref_split,
-        eval_split=args.eval_split,
+        ref_split="train",
+        eval_split="test",
         as_pandas=True,
         logging_header="(kNN Eval)",
     )
@@ -205,18 +205,6 @@ def get_args_parser():
     parser = utils.add_data_arg(parser)
     parser = eval_utils.add_eval_args(parser)
     parser = utils.add_knn_eval_args(parser)
-    parser.add_argument(
-        "--ref-split",
-        choices=["train", "valid", "test"],
-        default="train",
-        help="Which split to use as reference.",
-    )
-    parser.add_argument(
-        "--eval-split",
-        choices=["train", "valid", "test"],
-        default="test",
-        help="Which split to evaluate.",
-    )
     parser.add_argument("--num-workers", type=int, default=4)
     return parser
 
