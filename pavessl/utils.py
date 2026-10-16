@@ -272,7 +272,7 @@ def add_training_args(
     weight_decay_end_default: float = 0.4,
     optim_default: Literal["adamw", "sgd"] = "adamw",
     validation_freq_default: int = 1,
-    checkpoint_freq_default: int = 10,
+    checkpoint_freq_default: int = 25,
 ) -> argparse.ArgumentParser:
     parser.add_argument(
         "--save-dir",
@@ -376,7 +376,7 @@ def add_training_args(
         "--checkpoint-freq",
         type=int,
         default=checkpoint_freq_default,
-        help="Training state persistency (checkpointing) frequency in epochs.",
+        help="Frequency in epochs in which to make a history checkpoint.",
     )
     parser.add_argument(
         "--num-workers",

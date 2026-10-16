@@ -299,22 +299,28 @@ def _pretrain(args):
             duration = int(time.monotonic() - eval_start)
             print(f"Validation ended in {utils.get_time_string(duration)}!")
         # Save checkpoints
-        if not (epoch % args.checkpoint_freq) or (epoch + 1) == args.epochs:
-            states_dict = {
-                "student": student.state_dict(),
-                "teacher": teacher.state_dict(),
-                "loss_fn": loss_fn.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "epoch": epoch + 1,
-                "loss_history": loss_history,
-                "valid_history": valid_history,
-                "valid_metrics": valid_metrics,
-            }
-            utils.save_states(
-                save_file=(args.results_dir / "checkpoint.pth"),
-                states_dict=states_dict,
-                epoch=epoch,
-            )
+        check_start = time.monotonic()
+        states_dict = {
+            "student": student.state_dict(),
+            "teacher": teacher.state_dict(),
+            "loss_fn": loss_fn.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch + 1,
+            "loss_history": loss_history,
+            "valid_history": valid_history,
+            "valid_metrics": valid_metrics,
+        }
+        utils.save_states(
+            save_file=(args.results_dir / "checkpoint.pth"),
+            states_dict=states_dict,
+            epoch=(
+                None
+                if states_dict["epoch"] % args.checkpoint_freq
+                else states_dict["epoch"]
+            ),
+        )
+        duration = int(time.monotonic() - check_start)
+        print(f"Checkpointing took {utils.get_time_string(duration)}.")
     # Save histories and report run duration
     np.savetxt(
         fname=(args.results_dir / "loss_history.csv"),
