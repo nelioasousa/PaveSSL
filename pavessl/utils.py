@@ -263,7 +263,7 @@ def add_training_args(
     save_dir_default: str | None = None,
     save_folder_default: str | None = None,
     sources_subset_default: int = 1,
-    epochs_default: int = 100,
+    epochs_default: int = 200,
     batch_size_default: int = 8,
     lr_default: float = 1e-3,
     lr_end_default: float = 1e-6,
