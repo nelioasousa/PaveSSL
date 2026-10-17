@@ -350,8 +350,8 @@ class SSLMultiviewTransform(torch.nn.Module):
         photometric_transforms = [
             transforms_v2.RandomPosterize(bits=6, p=0.35),
             transforms_v2.RandomApply(
-                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.2))],
-                p=0.75,
+                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 0.8))],
+                p=0.7,
             ),
             transforms_v2.RandomGrayscale(p=0.25),
         ]
@@ -494,8 +494,8 @@ def get_augmentation(size: int, scale: tuple[float, float]):
     photometric_transforms = [
         transforms_v2.RandomPosterize(bits=6, p=0.35),
         transforms_v2.RandomApply(
-            [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.2))],
-            p=0.75,
+            [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 0.8))],
+            p=0.7,
         ),
         transforms_v2.RandomGrayscale(p=0.25),
     ]
