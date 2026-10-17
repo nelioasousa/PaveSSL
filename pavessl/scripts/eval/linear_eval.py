@@ -380,12 +380,7 @@ def get_args_parser():
     parser = utils.add_training_args(
         parser,
         sources_subset_default=0,
-        epochs_default=100,
         batch_size_default=16,
-        lr_default=1e-4,
-        lr_end_default=1e-6,
-        weight_decay_default=0.01,
-        weight_decay_end_default=0.1,
     )
     parser = eval_utils.add_eval_args(parser)
     parser.add_argument(

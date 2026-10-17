@@ -409,8 +409,7 @@ def _get_args_parser():
     parser = utils.add_training_args(
         parser=parser,
         save_dir_default="data/results/ssl_pretrain",
-        lr_default=5e-4,
-        lr_end_default=1e-6,
+        save_folder_default="test",
     )
     parser.add_argument(
         "--ssl-projection-dim",

@@ -315,8 +315,7 @@ def _get_args_parser():
     parser = utils.add_training_args(
         parser=parser,
         save_dir_default="data/results/sup_pretrain",
-        lr_default=1e-3,
-        lr_end_default=1e-5,
+        save_folder_default="test",
     )
     parser = add_supervised_transform_args(parser)
     parser = add_knn_eval_args(parser)
