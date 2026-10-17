@@ -98,15 +98,33 @@ def metrics_dict_to_pandas(
         metric for metric, value in metrics.items() if isinstance(value, list)
     ]
     aggreg_prefixes = ["macro", "weighted"]
-    df_columns = {}
+    df_data = {"class": classes + aggreg_prefixes}
     for metric_name in metric_names:
-        metric_column = metrics[metric_name] + [
+        df_data[metric_name] = metrics[metric_name] + [
             metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes
         ]
-        df_columns[metric_name] = metric_column
-    df = pd.DataFrame(data=df_columns, index=(classes + aggreg_prefixes))
-    df.index.name = "index"
-    return df
+    return pd.DataFrame(data=df_data)
+
+
+def save_metrics_dataframe_to_csv(
+    metrics_df: pd.DataFrame,
+    save_file: str | Path,
+):
+    new_df = {}
+    for col_name in metrics_df.columns:
+        if col_name == "class":
+            to_pad = max(len(cls_name) for cls_name in metrics_df[col_name])
+            to_pad = max(to_pad, len(col_name))
+            str_column = metrics_df[col_name]
+        else:
+            to_pad = max(len(col_name), 7) + 1
+            str_column = metrics_df[col_name].map(lambda x: f"{x:.5f}")
+        new_df[col_name.rjust(to_pad, " ")] = str_column.str.pad(width=to_pad)
+    pd.DataFrame(new_df).to_csv(
+        save_file,
+        header=True,
+        index=False,
+    )
 
 
 @torch.inference_mode()

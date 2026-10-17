@@ -75,7 +75,7 @@ def knn_eval_one(
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
-    as_pandas: bool = False,
+    as_dataframe: bool = False,
     logging_header: str = "",
 ) -> list[pd.DataFrame] | list[dict[str, float | list[float]]]:
     max_k = max(ks)
@@ -111,7 +111,7 @@ def knn_eval_one(
             eval_utils.multi_value_classification_metrics(
                 preds=preds.cpu().numpy(),
                 targets=eval_targets.cpu().numpy(),
-                classes=(classes if as_pandas else None),
+                classes=(classes if as_dataframe else None),
             )
         )
     return results
@@ -129,7 +129,7 @@ def knn_eval_all(
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
-    as_pandas: bool = False,
+    as_dataframe: bool = False,
     logging_header: str = "",
 ) -> (
     dict[str, list[pd.DataFrame]]
@@ -148,7 +148,7 @@ def knn_eval_all(
             num_workers=num_workers,
             ref_split=ref_split,
             eval_split=eval_split,
-            as_pandas=as_pandas,
+            as_dataframe=as_dataframe,
             logging_header=logging_header,
         )
         for source in target_sources
@@ -174,7 +174,7 @@ def _main(args):
         num_workers=args.num_workers,
         ref_split="train",
         eval_split="test",
-        as_pandas=True,
+        as_dataframe=True,
         logging_header="(kNN Eval)",
     )
     # Save results
@@ -183,13 +183,10 @@ def _main(args):
     k_padding = len(str(max(args.knn_ks)))
     for k_value, metrics in zip(args.knn_ks, results):
         k_value_str = str(k_value).rjust(k_padding, "0")
-        index_name_pad = max(len(name) for name in metrics.index)
-        metrics.index = metrics.index.str.pad(width=index_name_pad)
-        metrics.to_csv(
-            save_dir / f"knn_eval_{args.eval_target_source}_k{k_value_str}.csv",
-            float_format="%.5f",
-            header=True,
-            index=True,
+        filename = f"knn_eval_{args.eval_target_source}_k{k_value_str}.csv"
+        eval_utils.save_metrics_dataframe_to_csv(
+            metrics_df=metrics,
+            save_file=(save_dir / filename),
         )
 
 

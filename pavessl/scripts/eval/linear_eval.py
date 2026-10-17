@@ -348,13 +348,9 @@ def _main(args):
     )
     save_dir = args.experiment_dir / args.eval_save_folder
     save_dir.mkdir(exist_ok=True)
-    index_name_pad = max(len(name) for name in metrics.index)
-    metrics.index = metrics.index.str.pad(width=index_name_pad)
-    metrics.to_csv(
-        save_dir / metrics_filename,
-        float_format="%.5f",
-        header=True,
-        index=True,
+    eval_utils.save_metrics_dataframe_to_csv(
+        metrics_df=metrics,
+        save_file=(save_dir / metrics_filename),
     )
     # Report duration
     duration = int(time.monotonic() - start_time)
