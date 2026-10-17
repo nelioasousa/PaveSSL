@@ -5,11 +5,10 @@ from typing import Literal
 import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms_v2
-import torchvision.transforms.v2.functional as F
+import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 from torch.utils.data import Dataset, Sampler
 from torchvision import tv_tensors
-from torchvision.transforms.v2 import Transform, query_size
 
 
 def get_rdd2022_sources(subset_level: Literal[0, 1, 2, 3, 4]):
@@ -45,7 +44,7 @@ class RDD2022(Dataset):
         sources: str | list[str] | Literal["all"],
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
-        transform: Transform | torch.nn.Module | None = None,
+        transform: transforms_v2.Transform | None = None,
     ):
         if not data_path.is_dir():
             raise NotADirectoryError(f'Not a directory: "{data_path}"')
@@ -193,7 +192,11 @@ class RDD2022(Dataset):
         image_name = self.images[source][source_index]
         source_dir = self.sources_base_dir[source]
         image = Image.open(f"{source_dir}/images/{image_name}").convert("RGB")
-        image = F.to_dtype(F.to_image(image), dtype=torch.float32, scale=True)
+        image = F_v2.to_dtype(
+            F_v2.to_image(image),
+            dtype=torch.float32,
+            scale=True,
+        )
         if self.task == "ssl":
             label = self.weights[source]
         else:
@@ -274,7 +277,7 @@ class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
     _bottom_threshold = 0.6
 
     def make_params(self, flat_inputs):
-        h, _ = query_size(flat_inputs)
+        h, _ = transforms_v2.query_size(flat_inputs)
         params = super().make_params(flat_inputs)
         thres = max(0, int(h * self._bottom_threshold - params["height"] / 2))
         if params["top"] > thres:
@@ -288,54 +291,24 @@ class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
         return params
 
 
-class SSLMultiviewTransform(torch.nn.Module):
-    def __init__(
-        self,
-        global_size: int,
-        global_scale: tuple[float, float],
-        local_size: int,
-        local_scale: tuple[float, float],
-        num_local_views: int = 2,
-    ):
-        super().__init__()
-        self.global_size = global_size
-        self.local_size = local_size
-        self.num_local_views = num_local_views
-        augmentations = self.get_multiview_augmentations(
-            global_size,
-            global_scale,
-            local_size,
-            local_scale,
-        )
-        self.global1_aug = augmentations[0]
-        self.global2_aug = augmentations[1]
-        self.local_aug = augmentations[2]
-
-    def forward(self, img, label=None):
-        views = [self.global1_aug(img), self.global2_aug(img)]
-        views.extend([self.local_aug(img) for _ in range(self.num_local_views)])
-        return views, label
-
-    @staticmethod
-    def get_multiview_augmentations(
-        global_size: int,
-        global_scale: tuple[float, float],
-        local_size: int,
-        local_scale: tuple[float, float],
-    ):
-        # Geometric transformations
-        local_crop = BottomRandomResizedCrop(local_size, local_scale)
-        global_crop = BottomRandomResizedCrop(global_size, global_scale)
-        hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
-        rotation = transforms_v2.RandomApply(
-            [transforms_v2.RandomRotation(degrees=10, expand=False)],
-            p=0.4,
-        )
-        # Photometric transformations
-        ### CollorJitter is known to return NaN values
-        ### Best to put it before any other photometric transformations
-        ### Or apply it with the image in INT format/dtype
-        collor_jitter = transforms_v2.RandomApply(
+def get_augmentation(
+    size: int,
+    scale: tuple[float, float],
+    stronger: bool = True,
+):
+    # Geometric transformations
+    random_crop = BottomRandomResizedCrop(size, scale)
+    hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
+    rotation = transforms_v2.RandomApply(
+        [transforms_v2.RandomRotation(degrees=10, expand=False)],
+        p=0.4,
+    )
+    # Photometric transformations
+    ### CollorJitter is known to return NaN values
+    ### Best to put it before any other photometric transformations
+    ### Or apply it with the image in INT format/dtype
+    photometric_transforms = [
+        transforms_v2.RandomApply(
             [
                 transforms_v2.ColorJitter(
                     brightness=0.4,
@@ -345,46 +318,66 @@ class SSLMultiviewTransform(torch.nn.Module):
                 )
             ],
             p=0.85,
+        ),
+    ]
+    if stronger:
+        photometric_transforms.append(
+            transforms_v2.RandomSolarize(threshold=0.85, p=0.25),
         )
-        solarize = transforms_v2.RandomSolarize(threshold=0.85, p=0.25)
-        photometric_transforms = [
+    photometric_transforms.extend(
+        [
             transforms_v2.RandomApply(
                 [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 0.8))],
                 p=0.7,
             ),
             transforms_v2.RandomGrayscale(p=0.25),
+        ],
+    )
+    # Augmentations composition
+    augmentations = transforms_v2.Compose(
+        [
+            rotation,
+            random_crop,
+            hflip,
+            *photometric_transforms,
         ]
-        # Global
-        stronger_global_aug = transforms_v2.Compose(
-            [
-                rotation,
-                global_crop,
-                hflip,
-                collor_jitter,
-                solarize,
-                *photometric_transforms,
-            ]
+    )
+    return augmentations
+
+
+class SSLMultiviewTransform(transforms_v2.Transform):
+    def __init__(
+        self,
+        global_size: int,
+        global_scale: tuple[float, float],
+        local_size: int,
+        local_scale: tuple[float, float],
+        num_local_views: int,
+    ):
+        super().__init__()
+        self.num_local_views = num_local_views
+        self.global_aug_1 = get_augmentation(
+            global_size,
+            global_scale,
+            stronger=True,
         )
-        weaker_global_aug = transforms_v2.Compose(
-            [
-                rotation,
-                global_crop,
-                hflip,
-                collor_jitter,
-                *photometric_transforms,
-            ]
+        self.global_aug_2 = get_augmentation(
+            global_size,
+            global_scale,
+            stronger=False,
         )
-        # Local
-        local_aug = transforms_v2.Compose(
-            [
-                rotation,
-                local_crop,
-                hflip,
-                collor_jitter,
-                *photometric_transforms,
-            ]
+        self.local_aug = get_augmentation(
+            local_size,
+            local_scale,
+            stronger=False,
         )
-        return weaker_global_aug, stronger_global_aug, local_aug
+
+    def transform(self, inpt, params):
+        if not isinstance(inpt, torch.Tensor) or len(inpt.shape) != 3:
+            return inpt
+        views = [self.global_aug_1(inpt), self.global_aug_2(inpt)]
+        views.extend([self.local_aug(inpt) for _ in range(self.num_local_views)])
+        return views
 
     @staticmethod
     def multiview_collate_fn(batch):
@@ -432,7 +425,7 @@ class FourCornersCrop(transforms_v2.Transform):
         self.overlap = overlap
 
     def make_params(self, flat_inputs):
-        w, h = query_size(flat_inputs)
+        w, h = transforms_v2.query_size(flat_inputs)
         crop_size = {
             "width": min(w, round(w * (1 + self.overlap) / 2)),
             "height": min(h, round(h * (1 + self.overlap) / 2)),
@@ -464,46 +457,3 @@ class FourCornersCrop(transforms_v2.Transform):
             for crop in params
         ]
         return crops
-
-
-def get_augmentation(size: int, scale: tuple[float, float]):
-    # Geometric transformations
-    random_crop = BottomRandomResizedCrop(size, scale)
-    hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
-    rotation = transforms_v2.RandomApply(
-        [transforms_v2.RandomRotation(degrees=10, expand=False)],
-        p=0.4,
-    )
-    # Photometric transformations
-    ### CollorJitter is known to return NaN values
-    ### Best to put it before any other photometric transformations
-    ### Or apply it with the image in INT format/dtype
-    collor_jitter = transforms_v2.RandomApply(
-        [
-            transforms_v2.ColorJitter(
-                brightness=0.4,
-                contrast=0.4,
-                saturation=0.2,
-                hue=0.1,
-            )
-        ],
-        p=0.85,
-    )
-    solarize = transforms_v2.RandomSolarize(threshold=0.85, p=0.25)
-    photometric_transforms = [
-        transforms_v2.RandomApply(
-            [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 0.8))],
-            p=0.7,
-        ),
-        transforms_v2.RandomGrayscale(p=0.25),
-    ]
-    return transforms_v2.Compose(
-        [
-            rotation,
-            random_crop,
-            hflip,
-            collor_jitter,
-            solarize,
-            *photometric_transforms,
-        ]
-    )

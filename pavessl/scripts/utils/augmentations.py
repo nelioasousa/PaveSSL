@@ -32,7 +32,7 @@ def _main(args):
         img.save(save_dir / img_path.name)
         img = F_v2.to_dtype(F_v2.to_image(img), dtype=torch.float32, scale=True)
         # Multiview SSL pre-train
-        multiviews = multiview_transform(img)[0]
+        multiviews = multiview_transform(img)
         c, h, w = multiviews[0].shape
         mview_img = multiviews[0].new_zeros((c, int(1.51 * h), int(2.01 * w)))
         mview_img[:, :h, :w].copy_(multiviews[0])
