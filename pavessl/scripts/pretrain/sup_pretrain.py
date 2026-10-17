@@ -19,7 +19,10 @@ def _get_train_data_loader(args):
         sources=args.sources,
         split="train",
         task="classification",
-        transform=get_augmentation(args.sup_image_size, args.sup_crop_scale),
+        transform=get_augmentation(
+            pretrain_utils.GLOBAL_SIZE,
+            pretrain_utils.GLOBAL_SCALE,
+        ),
     )
     train_loader = DataLoader(
         dataset=train_dataset,
@@ -211,8 +214,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            crops_target_size=args.knn_crops_size,
-            crops_overlap=args.knn_crops_overlap,
+            image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             logging_header="(Eval/Classifier)",
@@ -285,25 +287,6 @@ def _check_args(args):
     return args
 
 
-def add_supervised_transform_args(
-    parser: argparse.ArgumentParser,
-) -> argparse.ArgumentParser:
-    parser.add_argument(
-        "--sup-image-size",
-        type=int,
-        default=pretrain_utils.GLOBAL_SIZE,
-        help="Input image size for supervised pre-training.",
-    )
-    parser.add_argument(
-        "--sup-crop-scale",
-        type=float,
-        nargs=2,
-        default=pretrain_utils.GLOBAL_SCALE,
-        help="Image cropping area range for supervised pre-training.",
-    )
-    return parser
-
-
 def _get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
@@ -317,7 +300,6 @@ def _get_args_parser():
         save_dir_default="data/results/sup_pretrain",
         save_folder_default="test",
     )
-    parser = add_supervised_transform_args(parser)
     parser = add_knn_eval_args(parser)
     return parser
 

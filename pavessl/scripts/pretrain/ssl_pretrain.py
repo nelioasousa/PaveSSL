@@ -47,11 +47,11 @@ def _get_models(device, args):
 
 def _get_train_data_loader(args):
     multiview_trans = SSLMultiviewTransform(
-        global_size=args.mv_global_size,
-        global_scale=args.mv_global_scale,
-        local_size=args.mv_local_size,
-        local_scale=args.mv_local_scale,
-        num_local_views=args.mv_num_local_views,
+        global_size=pretrain_utils.GLOBAL_SIZE,
+        global_scale=pretrain_utils.GLOBAL_SCALE,
+        local_size=pretrain_utils.LOCAL_SIZE,
+        local_scale=pretrain_utils.LOCAL_SCALE,
+        num_local_views=args.num_local_views,
     )
     train_dataset = RDD2022(
         data_path=args.data,
@@ -74,7 +74,7 @@ def _get_train_data_loader(args):
 def _get_loss_function(device, args):
     loss_fn = models.SSLLoss(
         projection_dim=args.ssl_projection_dim,
-        num_local_views=args.mv_num_local_views,
+        num_local_views=args.num_local_views,
         teacher_temp=args.ssl_teacher_temp,
         teacher_temp_start=args.ssl_teacher_temp_warmup_start,
         teacher_temp_warmup=args.ssl_teacher_temp_warmup_size,
@@ -259,8 +259,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            crops_target_size=args.knn_crops_size,
-            crops_overlap=args.knn_crops_overlap,
+            image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             logging_header="(Eval/Student)",
@@ -272,8 +271,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            crops_target_size=args.knn_crops_size,
-            crops_overlap=args.knn_crops_overlap,
+            image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             logging_header="(Eval/Teacher)",
@@ -356,46 +354,8 @@ def _check_args(args):
         0,
         min(args.ssl_freeze_last_layer_for, args.epochs),
     )
-    args.mv_num_local_views = max(args.mv_num_local_views, 1)
+    args.num_local_views = max(args.num_local_views, 1)
     return args
-
-
-def add_multiview_transform_args(
-    parser: argparse.ArgumentParser,
-) -> argparse.ArgumentParser:
-    parser.add_argument(
-        "--mv-global-size",
-        type=int,
-        default=pretrain_utils.GLOBAL_SIZE,
-        help="Global-view crops target dimension.",
-    )
-    parser.add_argument(
-        "--mv-global-scale",
-        type=float,
-        nargs=2,
-        default=pretrain_utils.GLOBAL_SCALE,
-        help="Global-view crops min-max range.",
-    )
-    parser.add_argument(
-        "--mv-local-size",
-        type=int,
-        default=pretrain_utils.LOCAL_SIZE,
-        help="Local-view crops target dimension.",
-    )
-    parser.add_argument(
-        "--mv-local-scale",
-        type=float,
-        nargs=2,
-        default=pretrain_utils.LOCAL_SCALE,
-        help="Local-view crops min-max range.",
-    )
-    parser.add_argument(
-        "--mv-num-local-views",
-        type=int,
-        default=2,
-        help="Generate N >= 1 local views for each image.",
-    )
-    return parser
 
 
 def _get_args_parser():
@@ -416,6 +376,12 @@ def _get_args_parser():
         type=int,
         default=8192,
         help="Projection heads output dimension.",
+    )
+    parser.add_argument(
+        "--num-local-views",
+        type=int,
+        default=2,
+        help="Generate N >= 1 local views for each image.",
     )
     parser.add_argument(
         "--ssl-teacher-momentum",
@@ -459,7 +425,6 @@ def _get_args_parser():
         default=0.02,
         help="Start value for the teacher softmax sharpening constant warmup.",
     )
-    parser = add_multiview_transform_args(parser)
     parser = add_knn_eval_args(parser)
     return parser
 

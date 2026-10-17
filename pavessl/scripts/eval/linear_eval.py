@@ -5,10 +5,12 @@ from typing import Literal
 
 import numpy as np
 import torch
+from torchvision.transforms.v2 import Resize
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from pavessl import data, models, utils
 from pavessl.scripts.eval import eval_utils
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 @torch.inference_mode()
@@ -228,6 +230,7 @@ def _main(args):
         checkpoint_key=args.checkpoint_key,
     )
     backbone = backbone.to(device=device, non_blocking=True)
+    transform = Resize(size=pretrain_utils.GLOBAL_SIZE)
     start_time = time.monotonic()
     train_features, train_labels = eval_utils.compute_features_and_labels(
         model=backbone,
@@ -236,6 +239,7 @@ def _main(args):
             sources=args.eval_target_source,
             split="train",
             task="classification",
+            transform=transform,
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
@@ -248,6 +252,7 @@ def _main(args):
             sources=args.eval_target_source,
             split="valid",
             task="classification",
+            transform=transform,
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
@@ -318,6 +323,7 @@ def _main(args):
         sources=args.eval_target_source,
         split="test",
         task="classification",
+        transform=transform,
     )
     test_features, test_labels = eval_utils.compute_features_and_labels(
         model=backbone,
@@ -355,7 +361,7 @@ def _main(args):
     print(f"Linear evaluation ended in {utils.get_time_string(duration)}!")
 
 
-def check_args(args: argparse.Namespace) -> argparse.Namespace:
+def _check_args(args):
     args.save_dir = (
         args.experiment_dir if args.save_dir is None else args.save_dir
     )
@@ -372,35 +378,22 @@ def check_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def get_args_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description="Run linear evaluation on a pretrained backbone.",
     )
     parser = utils.add_data_arg(parser)
+    parser = eval_utils.add_eval_args(parser)
     parser = utils.add_training_args(
         parser,
         sources_subset_default=0,
         batch_size_default=16,
     )
-    parser = eval_utils.add_eval_args(parser)
     parser.add_argument(
         "--eval-pred-threshold",
         type=float,
         default=0.5,
         help="Prediction threshold for linear evaluation.",
-    )
-    parser.add_argument(
-        "--eval-image-size",
-        type=int,
-        default=448,
-        help="Input image dimension.",
-    )
-    parser.add_argument(
-        "--eval-crop-scale",
-        type=float,
-        nargs=2,
-        default=(0.9, 1.0),
-        help="Min-max area range for image cropping.",
     )
     parser.add_argument(
         "--eval-num-layers",
@@ -419,9 +412,9 @@ def get_args_parser():
 
 def _run():
     try:
-        parser = get_args_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
-        _main(check_args(args))
+        _main(_check_args(args))
         return 0
     except Exception:
         import traceback

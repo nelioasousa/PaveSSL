@@ -5,26 +5,24 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl.data import FourCornersCrop, SSLMultiviewTransform, get_augmentation
-from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_transform_args
-from pavessl.scripts.pretrain.sup_pretrain import add_supervised_transform_args
-from pavessl.scripts.eval.knn_eval import add_knn_transform_args
+from pavessl import data
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
-    multiview_transform = SSLMultiviewTransform(
-        global_size=args.mv_global_size,
-        global_scale=args.mv_global_scale,
-        local_size=(args.mv_global_size // 2),
-        local_scale=args.mv_local_scale,
+    multiview_transform = data.SSLMultiviewTransform(
+        global_size=pretrain_utils.GLOBAL_SIZE,
+        global_scale=pretrain_utils.GLOBAL_SCALE,
+        local_size=(pretrain_utils.GLOBAL_SIZE / 2),
+        local_scale=pretrain_utils.LOCAL_SCALE,
         num_local_views=4,
     )
-    knn_transform = FourCornersCrop(
-        size=args.knn_crops_size,
-        overlap=args.knn_crops_overlap,
+    knn_transform = data.FourCornersCrop(pretrain_utils.GLOBAL_SIZE)
+    sup_transform = data.get_augmentation(
+        pretrain_utils.GLOBAL_SIZE,
+        pretrain_utils.GLOBAL_SCALE,
     )
-    sup_transform = get_augmentation(args.sup_image_size, args.sup_crop_scale)
     for processed, img_path in enumerate(args.images.glob(args.glob)):
         if processed >= args.max_images:
             break
@@ -58,7 +56,7 @@ def _main(args):
         sup_img.save(save_dir / "sup_pretrain.jpg")
 
 
-def get_args_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
             "Apply augmentations to images for visualization purposes."
@@ -88,15 +86,12 @@ def get_args_parser():
         default=20,
         help="Limit the number of images to be augmented.",
     )
-    parser = add_multiview_transform_args(parser)
-    parser = add_supervised_transform_args(parser)
-    parser = add_knn_transform_args(parser)
     return parser
 
 
 def _run():
     try:
-        parser = get_args_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
         _main(args)
         return 0

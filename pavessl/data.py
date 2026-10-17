@@ -426,7 +426,7 @@ class SSLMultiviewTransform(torch.nn.Module):
 
 
 class FourCornersCrop(transforms_v2.Transform):
-    def __init__(self, size: int, overlap: float):
+    def __init__(self, size: int, overlap: float = 0.1):
         super().__init__()
         self.size = size
         self.overlap = overlap

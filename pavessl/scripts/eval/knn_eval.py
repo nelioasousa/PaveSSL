@@ -7,21 +7,21 @@ import torch
 
 from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _get_features_similarities_and_targets(
     model: torch.nn.Module,
     data_path: Path,
     target_source: str,
-    crops_target_size: int,
-    crops_overlap: float,
+    image_size: int,
     batch_size: int,
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
     header: str = "",
 ):
-    transform = data.FourCornersCrop(crops_target_size, crops_overlap)
+    transform = data.FourCornersCrop(image_size)
     dataset = data.RDD2022(
         data_path=data_path,
         sources=target_source,
@@ -70,8 +70,7 @@ def knn_eval_one(
     ks: list[int],
     distance_temperature: float,
     pred_threshold: float,
-    crops_target_size: int,
-    crops_overlap: float,
+    image_size: int,
     batch_size: int,
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
@@ -84,8 +83,7 @@ def knn_eval_one(
         model=model,
         data_path=data_path,
         target_source=target_source,
-        crops_target_size=crops_target_size,
-        crops_overlap=crops_overlap,
+        image_size=image_size,
         batch_size=batch_size,
         num_workers=num_workers,
         ref_split=ref_split,
@@ -126,8 +124,7 @@ def knn_eval_all(
     ks: list[int],
     distance_temperature: float,
     pred_threshold: float,
-    crops_target_size: int,
-    crops_overlap: float,
+    image_size: int,
     batch_size: int,
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
@@ -146,8 +143,7 @@ def knn_eval_all(
             ks=ks,
             distance_temperature=distance_temperature,
             pred_threshold=pred_threshold,
-            crops_target_size=crops_target_size,
-            crops_overlap=crops_overlap,
+            image_size=image_size,
             batch_size=batch_size,
             num_workers=num_workers,
             ref_split=ref_split,
@@ -173,8 +169,7 @@ def _main(args):
         ks=args.knn_ks,
         distance_temperature=args.knn_dist_temperature,
         pred_threshold=args.knn_pred_threshold,
-        crops_target_size=args.knn_crops_size,
-        crops_overlap=args.knn_crops_overlap,
+        image_size=pretrain_utils.GLOBAL_SIZE,
         batch_size=args.knn_batch_size,
         num_workers=args.num_workers,
         ref_split="train",
@@ -198,29 +193,9 @@ def _main(args):
         )
 
 
-def add_knn_transform_args(parser):
-    parser.add_argument(
-        "--knn-crops-size",
-        type=int,
-        default=448,
-        help=(
-            "Resize crops to this dimension. "
-            "See `data.FourCornersCrop` for more information."
-        ),
-    )
-    parser.add_argument(
-        "--knn-crops-overlap",
-        type=float,
-        default=0.1,
-        help=(
-            "Percentual overlap between split crops. "
-            "See `data.FourCornersCrop` for more information."
-        ),
-    )
-    return parser
-
-
-def add_knn_eval_args(parser):
+def add_knn_eval_args(
+    parser: argparse.ArgumentParser
+) -> argparse.ArgumentParser:
     parser.add_argument(
         "--knn-ks",
         type=int,
@@ -249,11 +224,10 @@ def add_knn_eval_args(parser):
         default=32,
         help="Batch size for kNN evaluation.",
     )
-    parser = add_knn_transform_args(parser)
     return parser
 
 
-def get_args_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description="Run k-NN evaluation on a pretrained backbone.",
     )
@@ -271,7 +245,7 @@ def get_args_parser():
 
 def _run():
     try:
-        parser = get_args_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
         _main(args)
         return 0

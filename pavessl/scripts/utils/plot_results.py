@@ -124,7 +124,7 @@ def _plot_knn_valid_history(
     return fig, ax
 
 
-def get_args_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
             "Generate results visualizations (plots) for the experiments."
@@ -205,7 +205,7 @@ def _main(args):
 
 def _run():
     try:
-        parser = get_args_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
         _main(args)
         return 0
