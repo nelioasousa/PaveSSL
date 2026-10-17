@@ -121,12 +121,12 @@ def _train_one_epoch(
         local_views = local_views.to(device=device, non_blocking=True)
         samples_weight = samples_weight.to(device=device, non_blocking=True)
         samples_weight.div_(samples_weight.sum())
-        it = len(data_loader) * epoch + it  # Global training iteration
         # Only the first group is regularized
+        it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
         optimizer.param_groups[0]["lr"] = lr_schedule[it]
         optimizer.param_groups[1]["lr"] = lr_schedule[it]
-        # Teacher and student forward passes && compute loss
+        # Foward passes and loss computation
         teacher_out = teacher(global_views)
         student_g_out, student_l_out = student(global_views, local_views)
         loss = loss_fn(
@@ -136,8 +136,8 @@ def _train_one_epoch(
             samples_weight,
             epoch,
         )
-        # Loss explosion, unstable training
-        loss_value = loss.item()  # CPU-GPU synchronization
+        # Check for loss explosion
+        loss_value = loss.item()
         if not isfinite(loss_value):
             raise RuntimeError(f"Loss exploded with value {loss_value}")
         # Student update

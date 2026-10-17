@@ -77,17 +77,19 @@ def _train_one_epoch(
         metric_logger.log_every(data_loader, log_every, header)
     ):
         images = images.to(device=device, non_blocking=True)
+        targets = labels["target"].to(device=device, non_blocking=True)
+        samples_weight = labels["source_weight"].to(
+            device=device,
+            non_blocking=True,
+        )
         classes_weights = torch.where(
             labels["target"] > 0,
             labels["pos_weights"],
             labels["neg_weights"],
         )
-        targets = labels["target"].to(device=device, non_blocking=True)
-        samples_weight = labels["source_weight"]
-        samples_weight.div_(samples_weight.sum())
-        samples_weight = samples_weight.to(device=device, non_blocking=True)
-        classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
         classes_weights = classes_weights.to(device=device, non_blocking=True)
+        samples_weight.div_(samples_weight.sum())
+        classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
         # Only the first group is regularized
         it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
@@ -101,7 +103,7 @@ def _train_one_epoch(
             classes_weights,
             samples_weight,
         )
-        # CHeck for loss explosion
+        # Check for loss explosion
         loss_value = loss.item()
         if not isfinite(loss_value):
             raise RuntimeError(f"Loss exploded with value {loss_value}")
