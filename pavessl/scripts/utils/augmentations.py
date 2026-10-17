@@ -5,24 +5,27 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl.data import FourPointCrops, SSLMultiviewTransform
-from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_args
+from pavessl.data import FourPointCrops, SSLMultiviewTransform, get_augmentation
+from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_transform_args
+from pavessl.scripts.pretrain.sup_pretrain import add_supervised_transform_args
+from pavessl.scripts.eval.knn_eval import add_knn_transform_args
 
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
-    multiview = SSLMultiviewTransform(
+    multiview_transform = SSLMultiviewTransform(
         global_size=args.mv_global_size,
         global_scale=args.mv_global_scale,
-        local_size=args.mv_local_size,
+        local_size=(args.mv_global_size // 2),
         local_scale=args.mv_local_scale,
-        num_local_views=args.mv_num_local_views,
+        num_local_views=4,
     )
-    bottomsplit = FourPointCrops(
-        size=args.crops_target_size,
-        overlap=args.crops_overlap,
+    knn_transform = FourPointCrops(
+        size=args.knn_crops_size,
+        overlap=args.knn_crops_overlap,
     )
-    for processed, img_path in enumerate(args.images.glob("*.jpg")):
+    sup_transform = get_augmentation(args.sup_image_size, args.sup_crop_scale)
+    for processed, img_path in enumerate(args.images.glob(args.glob)):
         if processed >= args.max_images:
             break
         save_dir = args.save_dir / img_path.stem
@@ -30,31 +33,42 @@ def _main(args):
         img = Image.open(img_path).convert("RGB")
         img.save(save_dir / img_path.name)
         img = F_v2.to_dtype(F_v2.to_image(img), dtype=torch.float32, scale=True)
-        multiview_augs = multiview(img)[0]
-        for i, global_view in enumerate(multiview_augs[:2], start=1):
-            global_view = F_v2.to_pil_image(global_view)
-            save_path = save_dir / f"global_{i}.jpg"
-            global_view.save(save_path)
-        for i, local_view in enumerate(multiview_augs[2:], start=3):
-            local_view = F_v2.to_pil_image(local_view)
-            save_path = save_dir / f"local_{i}.jpg"
-            local_view.save(save_path)
-        img_splits = bottomsplit(img)
-        for i, split in enumerate(img_splits, start=1):
-            split = F_v2.to_pil_image(split)
-            save_path = save_dir / f"split_{i}.jpg"
-            split.save(save_path)
+        # Multiview SSL pre-train
+        multiview_aug = multiview_transform(img)[0]
+        multiview_img = torch.cat(multiview_aug[:2], dim=-1)
+        multiview_img = torch.cat(
+            (multiview_img, torch.cat(multiview_aug[2:], dim=-1)),
+            dim=-2,
+        )
+        multiview_img = F_v2.to_pil_image(multiview_img)
+        multiview_img.save(save_dir / "ssl_multiview.jpg")
+        # kNN
+        img_corners = knn_transform(img)
+        c, h, w = img_corners[0].shape
+        knn_img = img_corners[0].new_zeros((c, 2 * h, 2 * w))
+        knn_img[:, :h, :w].copy_(img_corners[0])
+        knn_img[:, :h, -w:].copy_(img_corners[1])
+        knn_img[:, -h:, :w].copy_(img_corners[2])
+        knn_img[:, -h:, -w:].copy_(img_corners[3])
+        knn_img = F_v2.to_pil_image(knn_img)
+        knn_img.save(save_dir / "knn_eval.jpg")
+        # Supervised pre-train
+        sup_img = sup_transform(img)
+        sup_img = F_v2.to_pil_image(sup_img)
+        sup_img.save(save_dir / "sup_pretrain.jpg")
 
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
-        description="Apply augmentations to images for visualization purposes."
+        description=(
+            "Apply augmentations to images for visualization purposes."
+        ),
     )
     parser.add_argument(
         "--images",
         type=Path,
         required=True,
-        help="Dictory containing images to be augmentated.",
+        help="Directory containing images to be augmentated.",
     )
     parser.add_argument(
         "--save-dir",
@@ -63,30 +77,24 @@ def get_args_parser():
         help="Directory path in which to save the augmentations.",
     )
     parser.add_argument(
+        "--glob",
+        type=str,
+        default="*.jpg",
+        help="Glob pattern for image search in the target directory.",
+    )
+    parser.add_argument(
         "--max-images",
         type=int,
         default=20,
         help="Limit the number of images to be augmented.",
     )
-    # Multi-view
-    parser = add_multiview_args(parser)
-    # k-NN eval
-    parser.add_argument(
-        "--crops-target-size",
-        type=int,
-        default=448,
-        help="Resize crops to this dimension.",
-    )
-    parser.add_argument(
-        "--crops-overlap",
-        type=float,
-        default=0.1,
-        help="Percentual overlap between split crops.",
-    )
+    parser = add_multiview_transform_args(parser)
+    parser = add_supervised_transform_args(parser)
+    parser = add_knn_transform_args(parser)
     return parser
 
 
-def run():
+def _run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
@@ -100,4 +108,4 @@ def run():
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(_run())

@@ -6,6 +6,11 @@ from torch import nn
 
 from pavessl.scripts.eval.knn_eval import knn_eval_all
 
+GLOBAL_SIZE = 448
+GLOBAL_SCALE = (0.7, 1.0)
+LOCAL_SIZE = 224
+LOCAL_SCALE = (0.16, 0.36)
+
 
 def check_run(experiment_args: Namespace) -> Namespace:
     args_file_path = experiment_args.results_dir / "run.args"
@@ -30,7 +35,7 @@ def backbone_knn_eval(
     batch_size: int,
     num_workers: int,
     logging_header: str = "",
-):
+) -> dict[str, list[dict[str, float | list[float]]]]:
     backbone.eval()
     results = knn_eval_all(
         model=backbone,

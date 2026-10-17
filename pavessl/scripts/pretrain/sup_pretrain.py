@@ -1,7 +1,7 @@
 import argparse
 import time
 from itertools import product
-from math import ceil, isfinite
+from math import isfinite
 
 import numpy as np
 import torch
@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from pavessl import models, utils
 from pavessl.data import RDD2022, get_augmentation
 from pavessl.scripts.pretrain import pretrain_utils
+from pavessl.scripts.eval.knn_eval import add_knn_eval_args
 
 
 def _get_train_data_loader(args):
@@ -18,7 +19,7 @@ def _get_train_data_loader(args):
         sources=args.sources,
         split="train",
         task="classification",
-        transform=get_augmentation(args.image_size, args.crop_scale),
+        transform=get_augmentation(args.sup_image_size, args.sup_crop_scale),
     )
     train_loader = DataLoader(
         dataset=train_dataset,
@@ -208,7 +209,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            crops_target_size=args.knn_crops_target_size,
+            crops_target_size=args.knn_crops_size,
             crops_overlap=args.knn_crops_overlap,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
@@ -277,12 +278,31 @@ def _pretrain(args):
     return classifier
 
 
-def check_args(args: argparse.Namespace) -> argparse.Namespace:
+def _check_args(args):
     args = utils.check_training_args(args)
     return args
 
 
-def get_args_parser():
+def add_supervised_transform_args(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--sup-image-size",
+        type=int,
+        default=pretrain_utils.GLOBAL_SIZE,
+        help="Input image size for supervised pre-training.",
+    )
+    parser.add_argument(
+        "--sup-crop-scale",
+        type=float,
+        nargs=2,
+        default=pretrain_utils.GLOBAL_SCALE,
+        help="Image cropping area range for supervised pre-training.",
+    )
+    return parser
+
+
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
             "Supervised backbone pre-training using multi-value classification."
@@ -296,30 +316,16 @@ def get_args_parser():
         lr_default=1e-3,
         lr_end_default=1e-5,
     )
-    # Input transformation
-    parser.add_argument(
-        "--image-size",
-        type=int,
-        default=448,
-        help="Input image dimension.",
-    )
-    parser.add_argument(
-        "--crop-scale",
-        type=float,
-        nargs=2,
-        default=(0.85, 1.0),
-        help="Min-max area range for image cropping.",
-    )
-    # kNN evaluation arguments
-    parser = utils.add_knn_eval_args(parser)
+    parser = add_supervised_transform_args(parser)
+    parser = add_knn_eval_args(parser)
     return parser
 
 
-def run():
+def _run():
     try:
-        parser = get_args_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
-        _pretrain(check_args(args))
+        _pretrain(_check_args(args))
         return 0
     except Exception:
         import traceback
@@ -329,4 +335,4 @@ def run():
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(_run())

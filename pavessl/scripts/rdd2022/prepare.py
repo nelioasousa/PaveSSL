@@ -250,7 +250,7 @@ def get_arg_parser():
     return parser
 
 
-def run():
+def _run():
     try:
         random.seed(42)
         parser = get_arg_parser()
@@ -265,4 +265,4 @@ def run():
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(_run())

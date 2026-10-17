@@ -417,56 +417,6 @@ def check_training_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def add_knn_eval_args(parser: argparse.ArgumentParser):
-    parser.add_argument(
-        "--knn-ks",
-        type=int,
-        nargs="+",
-        default=[5, 10, 25, 50],
-        help="Number of neighbours to use in kNN evalatuation.",
-    )
-    parser.add_argument(
-        "--knn-crops-target-size",
-        type=int,
-        default=448,
-        help=(
-            "Resize crops to this dimension. "
-            "See `data.FourPointCrops` for more information."
-        ),
-    )
-    parser.add_argument(
-        "--knn-crops-overlap",
-        type=float,
-        default=0.1,
-        help=(
-            "Percentual overlap between split crops. "
-            "See `data.FourPointCrops` for more information."
-        ),
-    )
-    parser.add_argument(
-        "--knn-dist-temperature",
-        type=float,
-        default=0.07,
-        help=(
-            "Sharpening constant for samples' distance weighting. "
-            "Smaller values give more importance to closest samples."
-        ),
-    )
-    parser.add_argument(
-        "--knn-pred-threshold",
-        type=float,
-        default=0.3,
-        help="Threshold for kNN prediction.",
-    )
-    parser.add_argument(
-        "--knn-batch-size",
-        type=int,
-        default=32,
-        help="Batch size for kNN evaluation.",
-    )
-    return parser
-
-
 def load_exp_arguments(
     experiment_path: str | Path,
 ) -> argparse.Namespace | None:

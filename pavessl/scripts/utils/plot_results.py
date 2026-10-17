@@ -203,7 +203,7 @@ def _main(args):
         )
 
 
-def run():
+def _run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
@@ -217,4 +217,4 @@ def run():
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(_run())

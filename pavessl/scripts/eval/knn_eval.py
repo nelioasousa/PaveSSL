@@ -173,7 +173,7 @@ def _main(args):
         ks=args.knn_ks,
         distance_temperature=args.knn_dist_temperature,
         pred_threshold=args.knn_pred_threshold,
-        crops_target_size=args.knn_crops_target_size,
+        crops_target_size=args.knn_crops_size,
         crops_overlap=args.knn_crops_overlap,
         batch_size=args.knn_batch_size,
         num_workers=args.num_workers,
@@ -198,18 +198,78 @@ def _main(args):
         )
 
 
+def add_knn_transform_args(parser):
+    parser.add_argument(
+        "--knn-crops-size",
+        type=int,
+        default=448,
+        help=(
+            "Resize crops to this dimension. "
+            "See `data.FourPointCrops` for more information."
+        ),
+    )
+    parser.add_argument(
+        "--knn-crops-overlap",
+        type=float,
+        default=0.1,
+        help=(
+            "Percentual overlap between split crops. "
+            "See `data.FourPointCrops` for more information."
+        ),
+    )
+    return parser
+
+
+def add_knn_eval_args(parser):
+    parser.add_argument(
+        "--knn-ks",
+        type=int,
+        nargs="+",
+        default=[5, 10, 25, 50],
+        help="Number of neighbours to use in kNN evalatuation.",
+    )
+    parser.add_argument(
+        "--knn-dist-temperature",
+        type=float,
+        default=0.07,
+        help=(
+            "Sharpening constant for samples' distance weighting. "
+            "Smaller values give more importance to closest samples."
+        ),
+    )
+    parser.add_argument(
+        "--knn-pred-threshold",
+        type=float,
+        default=0.3,
+        help="Threshold for kNN prediction.",
+    )
+    parser.add_argument(
+        "--knn-batch-size",
+        type=int,
+        default=32,
+        help="Batch size for kNN evaluation.",
+    )
+    parser = add_knn_transform_args(parser)
+    return parser
+
+
 def get_args_parser():
     parser = argparse.ArgumentParser(
         description="Run k-NN evaluation on a pretrained backbone.",
     )
     parser = utils.add_data_arg(parser)
     parser = eval_utils.add_eval_args(parser)
-    parser = utils.add_knn_eval_args(parser)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser = add_knn_eval_args(parser)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of workers for data loading.",
+    )
     return parser
 
 
-def run():
+def _run():
     try:
         parser = get_args_parser()
         args = parser.parse_args()
@@ -223,4 +283,4 @@ def run():
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(_run())
