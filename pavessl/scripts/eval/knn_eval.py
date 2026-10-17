@@ -21,7 +21,7 @@ def _get_features_similarities_and_targets(
     eval_split: Literal["train", "valid", "test"] = "valid",
     header: str = "",
 ):
-    transform = data.FourPointCrops(crops_target_size, crops_overlap)
+    transform = data.FourCornersCrop(crops_target_size, crops_overlap)
     dataset = data.RDD2022(
         data_path=data_path,
         sources=target_source,
@@ -205,7 +205,7 @@ def add_knn_transform_args(parser):
         default=448,
         help=(
             "Resize crops to this dimension. "
-            "See `data.FourPointCrops` for more information."
+            "See `data.FourCornersCrop` for more information."
         ),
     )
     parser.add_argument(
@@ -214,7 +214,7 @@ def add_knn_transform_args(parser):
         default=0.1,
         help=(
             "Percentual overlap between split crops. "
-            "See `data.FourPointCrops` for more information."
+            "See `data.FourCornersCrop` for more information."
         ),
     )
     return parser

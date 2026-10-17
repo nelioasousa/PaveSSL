@@ -426,7 +426,7 @@ class SSLMultiviewTransform(torch.nn.Module):
         return global_views, local_views, samples_weight
 
 
-class FourPointCrops(transforms_v2.Transform):
+class FourCornersCrop(transforms_v2.Transform):
     def __init__(self, size: int, overlap: float):
         super().__init__()
         self.size = size

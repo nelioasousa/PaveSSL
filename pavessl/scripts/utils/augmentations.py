@@ -5,7 +5,7 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl.data import FourPointCrops, SSLMultiviewTransform, get_augmentation
+from pavessl.data import FourCornersCrop, SSLMultiviewTransform, get_augmentation
 from pavessl.scripts.pretrain.ssl_pretrain import add_multiview_transform_args
 from pavessl.scripts.pretrain.sup_pretrain import add_supervised_transform_args
 from pavessl.scripts.eval.knn_eval import add_knn_transform_args
@@ -20,7 +20,7 @@ def _main(args):
         local_scale=args.mv_local_scale,
         num_local_views=4,
     )
-    knn_transform = FourPointCrops(
+    knn_transform = FourCornersCrop(
         size=args.knn_crops_size,
         overlap=args.knn_crops_overlap,
     )
