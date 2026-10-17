@@ -327,7 +327,7 @@ def get_augmentation(
     photometric_transforms.extend(
         [
             transforms_v2.RandomApply(
-                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 0.8))],
+                [transforms_v2.GaussianBlur(kernel_size=5, sigma=(0.2, 1.0))],
                 p=0.7,
             ),
             transforms_v2.RandomGrayscale(p=0.25),
