@@ -346,7 +346,7 @@ class SSLMultiviewTransform(torch.nn.Module):
             ],
             p=0.85,
         )
-        solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.35)
+        solarize = transforms_v2.RandomSolarize(threshold=0.85, p=0.25)
         photometric_transforms = [
             transforms_v2.RandomPosterize(bits=6, p=0.35),
             transforms_v2.RandomApply(
@@ -490,7 +490,7 @@ def get_augmentation(size: int, scale: tuple[float, float]):
         ],
         p=0.85,
     )
-    solarize = transforms_v2.RandomSolarize(threshold=0.8, p=0.35)
+    solarize = transforms_v2.RandomSolarize(threshold=0.85, p=0.25)
     photometric_transforms = [
         transforms_v2.RandomPosterize(bits=6, p=0.35),
         transforms_v2.RandomApply(
