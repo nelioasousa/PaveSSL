@@ -32,18 +32,22 @@ def _main(args):
         img.save(save_dir / img_path.name)
         img = F_v2.to_dtype(F_v2.to_image(img), dtype=torch.float32, scale=True)
         # Multiview SSL pre-train
-        multiview_aug = multiview_transform(img)[0]
-        multiview_img = torch.cat(multiview_aug[:2], dim=-1)
-        multiview_img = torch.cat(
-            (multiview_img, torch.cat(multiview_aug[2:], dim=-1)),
-            dim=-2,
-        )
-        multiview_img = F_v2.to_pil_image(multiview_img)
-        multiview_img.save(save_dir / "ssl_multiview.jpg")
+        multiviews = multiview_transform(img)[0]
+        c, h, w = multiviews[0].shape
+        mview_img = multiviews[0].new_zeros((c, int(1.51 * h), int(2.01 * w)))
+        mview_img[:, :h, :w].copy_(multiviews[0])
+        mview_img[:, :h, -w:].copy_(multiviews[1])
+        for i, s in enumerate(
+            torch.linspace(0, int(1.51 * w), 4, dtype=torch.long),
+            start=2,
+        ):
+            mview_img[:, -(h // 2) :, s : (s + w // 2)].copy_(multiviews[i])
+        mview_img = F_v2.to_pil_image(mview_img)
+        mview_img.save(save_dir / "ssl_multiview.jpg")
         # kNN
         img_corners = knn_transform(img)
         c, h, w = img_corners[0].shape
-        knn_img = img_corners[0].new_zeros((c, 2 * h, 2 * w))
+        knn_img = img_corners[0].new_zeros((c, int(2.01 * h), int(2.01 * w)))
         knn_img[:, :h, :w].copy_(img_corners[0])
         knn_img[:, :h, -w:].copy_(img_corners[1])
         knn_img[:, -h:, :w].copy_(img_corners[2])
