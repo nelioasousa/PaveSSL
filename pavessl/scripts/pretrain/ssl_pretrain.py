@@ -374,13 +374,13 @@ def _get_args_parser():
     parser.add_argument(
         "--ssl-projection-dim",
         type=int,
-        default=8192,
+        default=16384,
         help="Projection heads output dimension.",
     )
     parser.add_argument(
         "--num-local-views",
         type=int,
-        default=2,
+        default=4,
         help="Generate N >= 1 local views for each image.",
     )
     parser.add_argument(
@@ -392,7 +392,7 @@ def _get_args_parser():
     parser.add_argument(
         "--ssl-center-momentum",
         type=float,
-        default=0.9,
+        default=0.925,
         help="EMA update constant for the teacher output center.",
     )
     parser.add_argument(
@@ -410,13 +410,13 @@ def _get_args_parser():
     parser.add_argument(
         "--ssl-teacher-temp",
         type=float,
-        default=0.04,
+        default=0.05,
         help="Teacher softmax sharpening constant.",
     )
     parser.add_argument(
         "--ssl-teacher-temp-warmup-size",
         type=int,
-        default=3,
+        default=10,
         help="Warmup duration for the teacher softmax sharpening constant.",
     )
     parser.add_argument(
