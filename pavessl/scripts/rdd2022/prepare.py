@@ -6,7 +6,6 @@ from math import ceil, floor
 from pathlib import Path
 
 from PIL import Image
-from tqdm import tqdm
 
 CLASS_RENAME_MAP = {
     "D00": "crack_longitudinal",
@@ -32,17 +31,15 @@ def _cut_image_and_fix_bboxes(img, bboxes):
     diff = img_height - NORWAY_TARGET_SIZE
     cut_bboxes = []
     for class_name, xmin, ymin, xmax, ymax in bboxes:
-        box_width = xmax - xmin
-        box_remain = img_height - xmin
-        # Discard bbox if remaining width is small
-        if box_remain < (box_width / 16):
+        # Discard bboxes outside image crop
+        if xmin >= NORWAY_TARGET_SIZE or ymax <= diff:
             continue
         cut_bboxes.append(
             (
                 class_name,
                 xmin,
-                ymin - diff,
-                min(img_height, xmax),
+                max(0, ymin - diff),
+                min(NORWAY_TARGET_SIZE, xmax),
                 ymax - diff,
             )
         )
@@ -70,7 +67,7 @@ def _get_bboxes_from_xml_label(label_path: Path):
 
 def _save_bboxes_to_annotation(bboxes, ann_save_path, classes):
     label_lines = [
-        "{:02d} {:04d} {:04d} {:04d} {:04d}\n".format(
+        "{0} {1:04d} {2:04d} {3:04d} {4:04d}\n".format(
             classes.index(cls_name),
             *coords,
         )
@@ -177,7 +174,7 @@ def _prepare_dst_folder(dest_folder: Path):
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
-    for source_folder in tqdm(list(args.data.iterdir())):
+    for source_folder in args.data.iterdir():
         dst_folder = args.save_dir / source_folder.name
         _prepare_dst_folder(dst_folder)
         classes, train_split, valid_split, test_split = _train_valid_test_split(
@@ -185,7 +182,26 @@ def _main(args):
             args.train_prop,
             args.valid_prop,
         )
+        print(f"Classes in {source_folder.name} source:")
+        print(
+            "\n".join(
+                [
+                    f"  {cls_idx} {cls_name}"
+                    for cls_idx, cls_name in enumerate(classes)
+                ]
+            )
+        )
         (dst_folder / "classes.txt").write_text("\n".join(classes))
+        total_samples = len(train_split) + len(valid_split) + len(test_split)
+        train_prop = 100 * len(train_split) / total_samples
+        valid_prop = 100 * len(valid_split) / total_samples
+        test_prop = 100 - train_prop - valid_prop
+        no_annotations = sum(1 for _, ann in train_split if ann is None)
+        print(f"Train size: {len(train_split)} ({train_prop:5.2f}%)")
+        print(f"  No   annotations: {no_annotations}")
+        print(f"  With annotations: {len(train_split) - no_annotations}")
+        print(f"Valid size: {len(valid_split)} ({valid_prop:5.2f}%)")
+        print(f"Test  size: {len(test_split)} ({test_prop:5.2f}%)", end="\n\n")
         for img_path, label_path in train_split:
             img = Image.open(img_path)
             bboxes = (
@@ -214,7 +230,7 @@ def _main(args):
                 )
 
 
-def get_arg_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description=(
             "Prepare the RDD2022 dataset for "
@@ -225,7 +241,7 @@ def get_arg_parser():
         "--data",
         type=Path,
         default=Path("data/RDD2022"),
-        help="Path to the RDD2022 dataset.",
+        help="Path to the original RDD2022 dataset.",
     )
     parser.add_argument(
         "--save-dir",
@@ -253,7 +269,7 @@ def get_arg_parser():
 def _run():
     try:
         random.seed(42)
-        parser = get_arg_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
         _main(args)
         return 0
