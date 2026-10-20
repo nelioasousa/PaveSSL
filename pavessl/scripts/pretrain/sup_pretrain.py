@@ -35,12 +35,15 @@ def _get_train_data_loader(args):
 
 
 def _get_classifier(num_classes, device, args):
-    state_filename = f"sup_classifier_src{args.sources_subset}_net.pth"
+    previous_source = max(1, args.sources_subset - 1)
+    state_filename = f"sup_classifier_src{previous_source}_net.pth"
     classifier = models.build_classification_network(
         network_state_path=(args.start_points_dir / state_filename),
         backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
         num_classes=num_classes,
     )
+    state_filename = f"sup_classifier_src{args.sources_subset}_net.pth"
+    torch.save(classifier.state_dict(), args.start_points_dir / state_filename)
     backbone_nparams = utils.get_num_parameters(classifier.backbone)
     classifier_nparams = utils.get_num_parameters(classifier)
     print(f"Backbone # params: {backbone_nparams:,d}")
