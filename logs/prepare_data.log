@@ -1,0 +1,86 @@
+Classes in China_Drone source:
+  0 crack_interconnected
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+  4 repair
+Train size: 1799 (74.93%)
+  No   annotations: 0
+  With annotations: 1799
+Valid size: 229 ( 9.54%)
+Test  size: 373 (15.54%)
+
+Classes in China_MotorBike source:
+  0 crack_interconnected
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+  4 repair
+Train size: 1852 (74.77%)
+  No   annotations: 500
+  With annotations: 1352
+Valid size: 235 ( 9.49%)
+Test  size: 390 (15.74%)
+
+Classes in Czech source:
+  0 crack_interconnected
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+Train size: 2652 (74.96%)
+  No   annotations: 709
+  With annotations: 1943
+Valid size: 346 ( 9.78%)
+Test  size: 540 (15.26%)
+
+Classes in India source:
+  0 blur_crosswalk
+  1 blur_white_line
+  2 construction_joint
+  3 crack_interconnected
+  4 crack_longitudinal
+  5 crack_transverse
+  6 manhole
+  7 pothole
+Train size: 7237 (74.88%)
+  No   annotations: 1959
+  With annotations: 5278
+Valid size: 947 ( 9.80%)
+Test  size: 1481 (15.32%)
+
+Classes in Japan source:
+  0 blur_crosswalk
+  1 blur_white_line
+  2 crack_interconnected
+  3 crack_longitudinal
+  4 crack_transverse
+  5 manhole
+  6 pothole
+Train size: 9839 (74.92%)
+  No   annotations: 2627
+  With annotations: 7212
+Valid size: 1269 ( 9.66%)
+Test  size: 2025 (15.42%)
+
+Classes in Norway source:
+  0 crack_interconnected
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+Train size: 7650 (74.99%)
+  No   annotations: 2040
+  With annotations: 5610
+Valid size: 1012 ( 9.92%)
+Test  size: 1539 (15.09%)
+
+Classes in United_States source:
+  0 crack_interconnected
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+Train size: 4504 (75.00%)
+  No   annotations: 1200
+  With annotations: 3304
+Valid size: 591 ( 9.84%)
+Test  size: 910 (15.15%)
+
