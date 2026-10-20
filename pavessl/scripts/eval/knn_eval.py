@@ -4,6 +4,7 @@ from typing import Literal
 
 import pandas as pd
 import torch
+from torchvision.transforms.v2 import Resize
 
 from pavessl import data, utils
 from pavessl.scripts.eval import eval_utils
@@ -21,7 +22,7 @@ def _get_features_similarities_and_targets(
     eval_split: Literal["train", "valid", "test"] = "valid",
     header: str = "",
 ):
-    transform = data.FourCornersCrop(image_size)
+    transform = Resize(size=pretrain_utils.GLOBAL_SIZE)
     dataset = data.RDD2022(
         data_path=data_path,
         sources=target_source,
@@ -191,7 +192,7 @@ def _main(args):
 
 
 def add_knn_eval_args(
-    parser: argparse.ArgumentParser
+    parser: argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
     parser.add_argument(
         "--knn-ks",
