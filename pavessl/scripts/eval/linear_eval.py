@@ -94,7 +94,7 @@ def _train_one_epoch(
     for it, (features, targets, classes_weights, samples_weight) in enumerate(
         metric_logger.log_every(
             data_loader,
-            max(5, 5 * len(data_loader) // (5 * 10)),
+            max(5, 5 * len(data_loader) // (5 * 5)),
             header,
         )
     ):
@@ -230,150 +230,132 @@ def _main(args):
     )
     backbone = backbone.to(device=device, non_blocking=True)
     transform = Resize(size=GLOBAL_SIZE)
-    start_time = time.monotonic()
-    train_features, train_labels = eval_utils.compute_features_and_labels(
-        model=backbone,
-        dataset=data.RDD2022(
+    for eval_source in args.eval_sources:
+        start_time = time.monotonic()
+        train_features, train_labels = eval_utils.compute_features_and_labels(
+            model=backbone,
+            dataset=data.RDD2022(
+                data_path=args.data,
+                sources=eval_source,
+                split="train",
+                task="classification",
+                transform=transform,
+            ),
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin,
+            header=f"(Features extraction: {eval_source} train split)",
+        )
+        valid_features, valid_labels = eval_utils.compute_features_and_labels(
+            model=backbone,
+            dataset=data.RDD2022(
+                data_path=args.data,
+                sources=eval_source,
+                split="valid",
+                task="classification",
+                transform=transform,
+            ),
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            target_label_keys=["target"],
+            pin_memory=args.pin,
+            header=f"(Features extraction: {eval_source} valid split)",
+        )
+        state_filename = f"{args.eval_prefix}_{eval_source}_linear_head.pth"
+        classifier = models.build_classification_head(
+            state_path=(args.start_points_dir / state_filename),
+            in_dim=train_features.shape[-1],
+            out_dim=train_labels["target"].shape[-1],
+            num_layers=args.eval_num_layers,
+            hidden_dim=args.eval_hidden_dim,
+        )
+        classifier = classifier.to(device=device, non_blocking=True)
+        classifier, loss_history, valid_metrics, valid_history = _finetune(
+            classifier=classifier,
+            train_features=train_features,
+            train_labels=train_labels,
+            valid_features=valid_features,
+            valid_labels=valid_labels,
+            lr=args.lr,
+            lr_end=args.lr_end,
+            lr_warmup_size=args.lr_warmup_size,
+            wd=args.weight_decay,
+            wd_end=args.weight_decay_end,
+            optim=args.optim,
+            batch_size=args.batch_size,
+            num_epochs=args.epochs,
+            pred_threshold=args.eval_pred_threshold,
+        )
+        del train_features, train_labels
+        del valid_features, valid_labels
+        # Save finetuned classifier
+        finetune_dir = args.results_dir / "finetune"
+        finetune_dir.mkdir(exist_ok=True)
+        utils.save_states(
+            save_file=(finetune_dir / f"{eval_source}_head_net.pth"),
+            states_dict=classifier.state_dict(),
+        )
+        # Save finetuning histories
+        np.savetxt(
+            fname=(finetune_dir / f"{eval_source}_loss_history.csv"),
+            X=loss_history,
+            delimiter=",",
+            fmt="%20.10e",
+            header="min,max,avg,duration",
+            comments="",
+        )
+        np.savetxt(
+            fname=(finetune_dir / f"{eval_source}_valid_history.csv"),
+            X=valid_history,
+            delimiter=",",
+            fmt=(["%.4f"] * len(valid_metrics)),
+            header=(",".join(valid_metrics)),
+            comments="",
+        )
+        # Linear evaluation
+        dataset = data.RDD2022(
             data_path=args.data,
-            sources=args.eval_target_source,
-            split="train",
+            sources=eval_source,
+            split="test",
             task="classification",
             transform=transform,
-        ),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin,
-        header=f"(Features extraction: {args.eval_target_source} train split)",
-    )
-    valid_features, valid_labels = eval_utils.compute_features_and_labels(
-        model=backbone,
-        dataset=data.RDD2022(
-            data_path=args.data,
-            sources=args.eval_target_source,
-            split="valid",
-            task="classification",
-            transform=transform,
-        ),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        target_label_keys=["target"],
-        pin_memory=args.pin,
-        header=f"(Features extraction: {args.eval_target_source} valid split)",
-    )
-    state_filename = "{}_{}l_{}d_linear_eval_net.pth".format(
-        args.eval_target_source,
-        args.eval_num_layers,
-        args.eval_hidden_dim,
-    )
-    classifier = models.build_classification_head(
-        state_path=(args.start_points_dir / state_filename),
-        in_dim=train_features.shape[-1],
-        out_dim=train_labels["target"].shape[-1],
-        num_layers=args.eval_num_layers,
-        hidden_dim=args.eval_hidden_dim,
-    )
-    classifier = classifier.to(device=device, non_blocking=True)
-    classifier, loss_history, valid_metrics, valid_history = _finetune(
-        classifier=classifier,
-        train_features=train_features,
-        train_labels=train_labels,
-        valid_features=valid_features,
-        valid_labels=valid_labels,
-        lr=args.lr,
-        lr_end=args.lr_end,
-        lr_warmup_size=args.lr_warmup_size,
-        wd=args.weight_decay,
-        wd_end=args.weight_decay_end,
-        optim=args.optim,
-        batch_size=args.batch_size,
-        num_epochs=args.epochs,
-        pred_threshold=args.eval_pred_threshold,
-    )
-    del train_features, train_labels
-    del valid_features, valid_labels
-    # Save finetuned classifier
-    checkpoint_filename = "{}_{}l_{}d_linear_eval_net.pth".format(
-        args.eval_target_source,
-        args.eval_num_layers,
-        args.eval_hidden_dim,
-    )
-    utils.save_states(
-        save_file=(args.results_dir / checkpoint_filename),
-        states_dict=classifier.state_dict(),
-    )
-    # Save finetuning histories
-    np.savetxt(
-        fname=(args.results_dir / "loss_history.csv"),
-        X=loss_history,
-        delimiter=",",
-        fmt="%20.10e",
-        header="min,max,avg,duration",
-        comments="",
-    )
-    np.savetxt(
-        fname=(args.results_dir / "valid_history.csv"),
-        X=valid_history,
-        delimiter=",",
-        fmt=(["%.4f"] * len(valid_metrics)),
-        header=(",".join(valid_metrics)),
-        comments="",
-    )
-    # Linear evaluation
-    dataset = data.RDD2022(
-        data_path=args.data,
-        sources=args.eval_target_source,
-        split="test",
-        task="classification",
-        transform=transform,
-    )
-    test_features, test_labels = eval_utils.compute_features_and_labels(
-        model=backbone,
-        dataset=dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        target_label_keys=["target"],
-        pin_memory=args.pin,
-        header=f"(Linear eval: {args.eval_target_source} test split)",
-    )
-    metrics = _eval(
-        classifier=classifier,
-        dataset=TensorDataset(test_features, test_labels["target"]),
-        pred_threshold=args.eval_pred_threshold,
-        batch_size=args.batch_size,
-        classes=dataset.classes,
-    )
-    # Save results
-    metrics_filename = "linear_eval_{}_{}l_{}d.csv".format(
-        args.eval_target_source,
-        args.eval_num_layers,
-        args.eval_hidden_dim,
-    )
-    save_dir = args.experiment_dir / args.eval_save_folder
-    save_dir.mkdir(exist_ok=True)
-    eval_utils.save_metrics_dataframe_to_csv(
-        metrics_df=metrics,
-        save_file=(save_dir / metrics_filename),
-    )
-    # Report duration
-    duration = int(time.monotonic() - start_time)
-    print(f"Linear evaluation ended in {utils.get_time_string(duration)}!")
+        )
+        test_features, test_labels = eval_utils.compute_features_and_labels(
+            model=backbone,
+            dataset=dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            target_label_keys=["target"],
+            pin_memory=args.pin,
+            header=f"(Linear eval: {eval_source} test split)",
+        )
+        metrics = _eval(
+            classifier=classifier,
+            dataset=TensorDataset(test_features, test_labels["target"]),
+            pred_threshold=args.eval_pred_threshold,
+            batch_size=args.batch_size,
+            classes=dataset.classes,
+        )
+        # Save results
+        eval_utils.save_metrics_dataframe_to_csv(
+            metrics_df=metrics,
+            save_file=(args.results_dir / f"{eval_source}.csv"),
+        )
+        # Report duration
+        duration = int(time.monotonic() - start_time)
+        print(
+            "{}: linear evaluation ended in {}!".format(
+                eval_source,
+                utils.get_time_string(duration),
+            )
+        )
 
 
 def _check_args(args):
-    args.save_dir = (
-        args.experiment_dir if args.save_dir is None else args.save_dir
-    )
-    args.save_folder = (
-        "linear_eval_{}_{}l_{}d".format(
-            args.eval_target_source,
-            args.eval_num_layers,
-            args.eval_hidden_dim,
-        )
-        if args.save_folder is None
-        else args.save_folder
-    )
-    args = utils.check_training_args(args)
-    return args
+    args.eval_prefix = f"{args.eval_num_layers}l_{args.eval_hidden_dim}d"
+    args.save_dir = args.experiment_dir
+    args.save_folder = f"{args.eval_folder}/linear_{args.eval_prefix}"
+    return utils.check_training_args(args)
 
 
 def _get_args_parser():

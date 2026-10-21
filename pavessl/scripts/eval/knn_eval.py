@@ -169,10 +169,12 @@ def _main(args):
     )
     device = utils.get_device()
     backbone = backbone.to(device=device, non_blocking=True)
-    results = knn_eval_one(
+    save_dir = args.experiment_dir / args.eval_folder / "knn"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    results = knn_eval_all(
         model=backbone,
         data_path=args.data,
-        target_source=args.eval_target_source,
+        target_source=args.eval_sources,
         ks=args.knn_ks,
         distance_temperature=args.knn_dist_temperature,
         pred_threshold=args.knn_pred_threshold,
@@ -186,16 +188,15 @@ def _main(args):
         logging_header="(kNN Eval)",
     )
     # Save results
-    save_dir = args.experiment_dir / args.eval_save_folder
-    save_dir.mkdir(exist_ok=True)
     k_padding = len(str(max(args.knn_ks)))
-    for k_value, metrics in zip(args.knn_ks, results):
-        k_value_str = str(k_value).rjust(k_padding, "0")
-        filename = f"knn_eval_{args.eval_target_source}_k{k_value_str}.csv"
-        eval_utils.save_metrics_dataframe_to_csv(
-            metrics_df=metrics,
-            save_file=(save_dir / filename),
-        )
+    for source_name, source_metrics in results.items():
+        for k_value, k_metrics in zip(args.knn_ks, source_metrics):
+            k_value_str = str(k_value).rjust(k_padding, "0")
+            filename = f"{source_name}_k{k_value_str}.csv"
+            eval_utils.save_metrics_dataframe_to_csv(
+                metrics_df=k_metrics,
+                save_file=(save_dir / filename),
+            )
 
 
 def add_knn_eval_args(
