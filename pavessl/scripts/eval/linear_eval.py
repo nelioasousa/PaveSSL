@@ -5,8 +5,8 @@ from typing import Literal
 
 import numpy as np
 import torch
-from torchvision.transforms.v2 import Resize
 from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torchvision.transforms.v2 import Resize
 
 from pavessl import data, models, utils
 from pavessl.scripts.eval import eval_utils
@@ -341,7 +341,7 @@ def _main(args):
         classes=dataset.classes,
     )
     # Save results
-    metrics_filename = "linear_eval_{0}_{1}l_{2}d.csv".format(
+    metrics_filename = "linear_eval_{}_{}l_{}d.csv".format(
         args.eval_target_source,
         args.eval_num_layers,
         args.eval_hidden_dim,
@@ -362,7 +362,7 @@ def _check_args(args):
         args.experiment_dir if args.save_dir is None else args.save_dir
     )
     args.save_folder = (
-        "linear_eval_{0}_{1}l_{2}d".format(
+        "linear_eval_{}_{}l_{}d".format(
             args.eval_target_source,
             args.eval_num_layers,
             args.eval_hidden_dim,

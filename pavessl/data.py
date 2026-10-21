@@ -376,7 +376,9 @@ class SSLMultiviewTransform(transforms_v2.Transform):
         if not isinstance(inpt, torch.Tensor) or len(inpt.shape) != 3:
             return inpt
         views = [self.global_aug_1(inpt), self.global_aug_2(inpt)]
-        views.extend([self.local_aug(inpt) for _ in range(self.num_local_views)])
+        views.extend(
+            [self.local_aug(inpt) for _ in range(self.num_local_views)]
+        )
         return views
 
     @staticmethod

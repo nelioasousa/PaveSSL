@@ -47,4 +47,4 @@ line-length = 80
 
 [tool.ruff.lint]
 extend-select = ["E501"]
-ignore = ["BLE001", "UP032"]
+ignore = ["BLE001", "UP032", "UP047"]

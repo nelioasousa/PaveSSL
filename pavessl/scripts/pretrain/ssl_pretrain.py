@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 
 from pavessl import models, utils
 from pavessl.data import RDD2022, SSLMultiviewTransform
-from pavessl.scripts.pretrain import pretrain_utils
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _get_models(device, args):
@@ -279,7 +279,9 @@ def _pretrain(args):
         if valid_metrics is None:
             valid_metrics = sorted(student_eval[args.sources[0]][0])
             num_cols = len(valid_metrics) * len(args.sources) * len(args.knn_ks)
-            valid_history = np.zeros((args.epochs, 2 * num_cols), dtype=np.float32)
+            valid_history = np.zeros(
+                (args.epochs, 2 * num_cols), dtype=np.float32
+            )
         valid_history[epoch] = [
             metrics[source][k_idx][metric]
             for metrics, source, k_idx, metric in product(

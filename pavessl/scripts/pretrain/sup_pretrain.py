@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 
 from pavessl import models, utils
 from pavessl.data import RDD2022, get_augmentation
-from pavessl.scripts.pretrain import pretrain_utils
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
+from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _get_train_data_loader(args):

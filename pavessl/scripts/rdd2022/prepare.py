@@ -67,7 +67,7 @@ def _get_bboxes_from_xml_label(label_path: Path):
 
 def _save_bboxes_to_annotation(bboxes, ann_save_path, classes):
     label_lines = [
-        "{0} {1:04d} {2:04d} {3:04d} {4:04d}\n".format(
+        "{} {:04d} {:04d} {:04d} {:04d}\n".format(
             classes.index(cls_name),
             *coords,
         )
