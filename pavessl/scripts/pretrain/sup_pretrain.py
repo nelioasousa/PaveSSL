@@ -133,6 +133,7 @@ def _pretrain(args):
             "Ignoring any argument changes.\n"
             "Continuing previous training run."
         )
+        stored_args.pin = args.pin
         args = stored_args
     # Restore training
     train_loader = _get_train_data_loader(args)
