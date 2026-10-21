@@ -378,6 +378,11 @@ def add_training_args(
         help="Number of workers for data loading.",
     )
     parser.add_argument(
+        "--pin",
+        action="store_true",
+        help="Whether to pin memory in data loader.",
+    )
+    parser.add_argument(
         "--start-points-dir",
         type=Path,
         default=Path("data/results/start_points"),

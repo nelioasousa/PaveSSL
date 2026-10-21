@@ -65,7 +65,7 @@ def _get_train_data_loader(args):
         batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
         num_workers=args.num_workers,
         collate_fn=SSLMultiviewTransform.multiview_collate_fn,
-        pin_memory=False,
+        pin_memory=args.pin,
         persistent_workers=True,
     )
     return train_loader
@@ -262,6 +262,7 @@ def _pretrain(args):
             image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            pin_memory=args.pin,
             logging_header="(Eval/Student)",
         )
         teacher_eval = pretrain_utils.backbone_knn_eval(
@@ -274,6 +275,7 @@ def _pretrain(args):
             image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            pin_memory=args.pin,
             logging_header="(Eval/Teacher)",
         )
         if valid_metrics is None:

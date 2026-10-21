@@ -134,6 +134,7 @@ def compute_features_and_labels(
     batch_size: int,
     num_workers: int,
     target_label_keys: list[str] | None = None,
+    pin_memory: bool = False,
     header: str = "",
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -143,7 +144,7 @@ def compute_features_and_labels(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=False,
+        pin_memory=pin_memory,
         drop_last=False,
     )
     features = None

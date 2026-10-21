@@ -243,6 +243,7 @@ def _main(args):
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        pin_memory=args.pin,
         header=f"(Features extraction: {args.eval_target_source} train split)",
     )
     valid_features, valid_labels = eval_utils.compute_features_and_labels(
@@ -257,6 +258,7 @@ def _main(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         target_label_keys=["target"],
+        pin_memory=args.pin,
         header=f"(Features extraction: {args.eval_target_source} valid split)",
     )
     state_filename = "{}_{}l_{}d_linear_eval_net.pth".format(
@@ -331,6 +333,7 @@ def _main(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         target_label_keys=["target"],
+        pin_memory=args.pin,
         header=f"(Linear eval: {args.eval_target_source} test split)",
     )
     metrics = _eval(

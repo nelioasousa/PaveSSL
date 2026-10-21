@@ -33,6 +33,7 @@ def backbone_knn_eval(
     image_size: int,
     batch_size: int,
     num_workers: int,
+    pin_memory: bool = False,
     logging_header: str = "",
 ) -> dict[str, list[dict[str, float | list[float]]]]:
     backbone.eval()
@@ -48,6 +49,7 @@ def backbone_knn_eval(
         num_workers=num_workers,
         ref_split="train",
         eval_split="valid",
+        pin_memory=pin_memory,
         logging_header=logging_header,
     )
     return {

@@ -28,7 +28,7 @@ def _get_train_data_loader(args):
         dataset=train_dataset,
         batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
         num_workers=args.num_workers,
-        pin_memory=False,
+        pin_memory=args.pin,
         persistent_workers=True,
     )
     return train_loader
@@ -220,6 +220,7 @@ def _pretrain(args):
             image_size=pretrain_utils.GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            pin_memory=args.pin,
             logging_header="(Eval/Classifier)",
         )
         if valid_metrics is None:

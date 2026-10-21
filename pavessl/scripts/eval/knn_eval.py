@@ -20,6 +20,7 @@ def _get_features_similarities_and_targets(
     num_workers: int,
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
+    pin_memory: bool = False,
     header: str = "",
 ):
     transform = Resize(size=pretrain_utils.GLOBAL_SIZE)
@@ -37,6 +38,7 @@ def _get_features_similarities_and_targets(
         batch_size=batch_size,
         num_workers=num_workers,
         target_label_keys=["target"],
+        pin_memory=pin_memory,
         header=(
             f"{header}{' ' if header else ''}"
             f"[{target_source}: {ref_split} split]"
@@ -54,6 +56,7 @@ def _get_features_similarities_and_targets(
         batch_size=batch_size,
         num_workers=num_workers,
         target_label_keys=["target"],
+        pin_memory=pin_memory,
         header=(
             f"{header}{' ' if header else ''}"
             f"[{target_source}: {eval_split} split]"
@@ -77,6 +80,7 @@ def knn_eval_one(
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
     as_dataframe: bool = False,
+    pin_memory: bool = False,
     logging_header: str = "",
 ) -> list[pd.DataFrame] | list[dict[str, float | list[float]]]:
     max_k = max(ks)
@@ -89,6 +93,7 @@ def knn_eval_one(
         num_workers=num_workers,
         ref_split=ref_split,
         eval_split=eval_split,
+        pin_memory=pin_memory,
         header=logging_header,
     )
     similarities, ref_targets, eval_targets = sim_and_targets
@@ -131,6 +136,7 @@ def knn_eval_all(
     ref_split: Literal["train", "valid", "test"] = "train",
     eval_split: Literal["train", "valid", "test"] = "valid",
     as_dataframe: bool = False,
+    pin_memory: bool = False,
     logging_header: str = "",
 ) -> (
     dict[str, list[pd.DataFrame]]
@@ -150,6 +156,7 @@ def knn_eval_all(
             ref_split=ref_split,
             eval_split=eval_split,
             as_dataframe=as_dataframe,
+            pin_memory=pin_memory,
             logging_header=logging_header,
         )
         for source in target_sources
