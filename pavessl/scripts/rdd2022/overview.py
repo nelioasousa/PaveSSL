@@ -5,15 +5,13 @@ from json import dump as json_dump
 from pathlib import Path
 from shutil import copy
 
-from tqdm import tqdm
-
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
     sizes_count = defaultdict(lambda: defaultdict(int))
     objects_count = defaultdict(lambda: defaultdict(int))
     samples_count = defaultdict(lambda: defaultdict(int))
-    for source_dir in tqdm(list(args.data.iterdir())):
+    for source_dir in list(args.data.iterdir()):
         source_name = source_dir.name
         samples_dir = args.save_dir / source_name
         samples_dir.mkdir(exist_ok=True)
