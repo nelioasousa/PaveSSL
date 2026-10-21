@@ -182,6 +182,7 @@ def _main(args):
         ref_split="train",
         eval_split="test",
         as_dataframe=True,
+        pin_memory=args.pin,
         logging_header="(kNN Eval)",
     )
     # Save results
@@ -243,6 +244,11 @@ def _get_args_parser():
         type=int,
         default=4,
         help="Number of workers for data loading.",
+    )
+    parser.add_argument(
+        "--pin",
+        action="store_true",
+        help="Whether to pin memory in data loader.",
     )
     return parser
 
