@@ -6,9 +6,8 @@ import pandas as pd
 import torch
 from torchvision.transforms.v2 import Resize
 
-from pavessl import data, utils
+from pavessl import data, utils, GLOBAL_SIZE
 from pavessl.scripts.eval import eval_utils
-from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _get_features_similarities_and_targets(
@@ -23,7 +22,7 @@ def _get_features_similarities_and_targets(
     pin_memory: bool = False,
     header: str = "",
 ):
-    transform = Resize(size=pretrain_utils.GLOBAL_SIZE)
+    transform = Resize(size=image_size)
     dataset = data.RDD2022(
         data_path=data_path,
         sources=target_source,
@@ -177,7 +176,7 @@ def _main(args):
         ks=args.knn_ks,
         distance_temperature=args.knn_dist_temperature,
         pred_threshold=args.knn_pred_threshold,
-        image_size=pretrain_utils.GLOBAL_SIZE,
+        image_size=GLOBAL_SIZE,
         batch_size=args.knn_batch_size,
         num_workers=args.num_workers,
         ref_split="train",

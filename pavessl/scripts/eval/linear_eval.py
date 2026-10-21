@@ -8,9 +8,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms.v2 import Resize
 
-from pavessl import data, models, utils
+from pavessl import data, models, utils, GLOBAL_SIZE
 from pavessl.scripts.eval import eval_utils
-from pavessl.scripts.pretrain import pretrain_utils
 
 
 @torch.inference_mode()
@@ -230,7 +229,7 @@ def _main(args):
         checkpoint_key=args.checkpoint_key,
     )
     backbone = backbone.to(device=device, non_blocking=True)
-    transform = Resize(size=pretrain_utils.GLOBAL_SIZE)
+    transform = Resize(size=GLOBAL_SIZE)
     start_time = time.monotonic()
     train_features, train_labels = eval_utils.compute_features_and_labels(
         model=backbone,

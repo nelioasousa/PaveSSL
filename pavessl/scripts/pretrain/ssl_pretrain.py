@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from pavessl import models, utils
+from pavessl import GLOBAL_SIZE, GLOBAL_SCALE, LOCAL_SIZE, LOCAL_SCALE
 from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
 from pavessl.scripts.pretrain import pretrain_utils
@@ -47,10 +48,10 @@ def _get_models(device, args):
 
 def _get_train_data_loader(args):
     multiview_trans = SSLMultiviewTransform(
-        global_size=pretrain_utils.GLOBAL_SIZE,
-        global_scale=pretrain_utils.GLOBAL_SCALE,
-        local_size=pretrain_utils.LOCAL_SIZE,
-        local_scale=pretrain_utils.LOCAL_SCALE,
+        global_size=GLOBAL_SIZE,
+        global_scale=GLOBAL_SCALE,
+        local_size=LOCAL_SIZE,
+        local_scale=LOCAL_SCALE,
         num_local_views=args.num_local_views,
     )
     train_dataset = RDD2022(
@@ -259,7 +260,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            image_size=pretrain_utils.GLOBAL_SIZE,
+            image_size=GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             pin_memory=args.pin,
@@ -272,7 +273,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            image_size=pretrain_utils.GLOBAL_SIZE,
+            image_size=GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             pin_memory=args.pin,

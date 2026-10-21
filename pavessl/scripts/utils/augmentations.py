@@ -5,24 +5,21 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl import data
+from pavessl import data, GLOBAL_SIZE, GLOBAL_SCALE, LOCAL_SCALE
 from pavessl.scripts.pretrain import pretrain_utils
 
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
     multiview_transform = data.SSLMultiviewTransform(
-        global_size=pretrain_utils.GLOBAL_SIZE,
-        global_scale=pretrain_utils.GLOBAL_SCALE,
-        local_size=(pretrain_utils.GLOBAL_SIZE / 2),
-        local_scale=pretrain_utils.LOCAL_SCALE,
+        global_size=GLOBAL_SIZE,
+        global_scale=GLOBAL_SCALE,
+        local_size=(GLOBAL_SIZE / 2),
+        local_scale=LOCAL_SCALE,
         num_local_views=4,
     )
-    knn_transform = data.FourCornersCrop(pretrain_utils.GLOBAL_SIZE)
-    sup_transform = data.get_augmentation(
-        pretrain_utils.GLOBAL_SIZE,
-        pretrain_utils.GLOBAL_SCALE,
-    )
+    knn_transform = data.FourCornersCrop(GLOBAL_SIZE)
+    sup_transform = data.get_augmentation(GLOBAL_SIZE, GLOBAL_SCALE)
     for processed, img_path in enumerate(args.images.glob(args.glob)):
         if processed >= args.max_images:
             break

@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from pavessl import models, utils
+from pavessl import models, utils, GLOBAL_SIZE, GLOBAL_SCALE
 from pavessl.data import RDD2022, get_augmentation
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
 from pavessl.scripts.pretrain import pretrain_utils
@@ -19,10 +19,7 @@ def _get_train_data_loader(args):
         sources=args.sources,
         split="train",
         task="classification",
-        transform=get_augmentation(
-            pretrain_utils.GLOBAL_SIZE,
-            pretrain_utils.GLOBAL_SCALE,
-        ),
+        transform=get_augmentation(GLOBAL_SIZE, GLOBAL_SCALE),
     )
     train_loader = DataLoader(
         dataset=train_dataset,
@@ -217,7 +214,7 @@ def _pretrain(args):
             ks=args.knn_ks,
             distance_temperature=args.knn_dist_temperature,
             pred_threshold=args.knn_pred_threshold,
-            image_size=pretrain_utils.GLOBAL_SIZE,
+            image_size=GLOBAL_SIZE,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             pin_memory=args.pin,
