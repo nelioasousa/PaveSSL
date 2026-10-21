@@ -29,6 +29,7 @@ def _plot_loss_history(
             data=ckpt["loss_history"][: ckpt["epoch"]],
             columns=["min", "max", "avg", "duration"],
         )
+    loss_df = loss_df.copy()
     loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.fill_between(
@@ -79,6 +80,7 @@ def _plot_knn_valid_history(
     eval_metrics = sorted(
         frozenset(col.split("__")[-1] for col in valid_df.columns)
     )
+    valid_df = valid_df.copy()
     valid_df["epoch"] = np.arange(1, len(valid_df) + 1)
     fig, axs = plt.subplots(
         len(eval_metrics),
