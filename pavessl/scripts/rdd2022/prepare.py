@@ -83,11 +83,11 @@ def _get_train_test_samples(source_folder: Path):
             img_path,
             img_path.parents[1] / f"annotations/xmls/{img_path.stem}.xml",
         )
-        for img_path in (source_folder / "train/images").iterdir()
+        for img_path in sorted((source_folder / "train/images").iterdir())
     ]
     if not (source_folder / "test").is_dir():
         return train_samples, []
-    test_samples = list((source_folder / "test/images").iterdir())
+    test_samples = sorted((source_folder / "test/images").iterdir())
     return train_samples, test_samples
 
 
@@ -174,7 +174,7 @@ def _prepare_dst_folder(dest_folder: Path):
 
 def _main(args):
     args.save_dir.mkdir(exist_ok=True, parents=True)
-    for source_folder in args.data.iterdir():
+    for source_folder in sorted(args.data.iterdir()):
         dst_folder = args.save_dir / source_folder.name
         _prepare_dst_folder(dst_folder)
         classes, train_split, valid_split, test_split = _train_valid_test_split(

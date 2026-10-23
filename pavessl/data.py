@@ -83,7 +83,7 @@ class RDD2022(Dataset):
             self.images = {
                 source: [
                     f"{annotation.stem}.jpg"
-                    for annotation in (
+                    for annotation in sorted(
                         (data_path / f"{source}/{split}/annotations").iterdir()
                     )
                 ]
@@ -93,7 +93,7 @@ class RDD2022(Dataset):
             self.images = {
                 source: [
                     image.name
-                    for image in (
+                    for image in sorted(
                         (data_path / f"{source}/{split}/images").iterdir()
                     )
                 ]
