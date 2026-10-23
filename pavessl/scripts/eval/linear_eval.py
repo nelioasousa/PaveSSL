@@ -398,7 +398,7 @@ def _get_args_parser():
     parser = utils.add_training_args(
         parser,
         sources_subset_default=0,
-        batch_size_default=16,
+        batch_size_default=32,
     )
     parser.add_argument(
         "--eval-thresholds",
