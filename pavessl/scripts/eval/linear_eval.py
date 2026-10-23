@@ -4,12 +4,15 @@ import time
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms.v2 import Resize
 
 from pavessl import data, models, utils, GLOBAL_SIZE
 from pavessl.scripts.eval import eval_utils
+from pavessl.scripts.utils.plot_results import plot_loss_history
+from pavessl.scripts.utils.plot_results import plot_valid_history
 
 
 @torch.inference_mode()
@@ -308,6 +311,15 @@ def _main(args):
             header="min,max,avg,duration",
             comments="",
         )
+        plot_loss_history(
+            loss_history_df=pd.DataFrame(
+                loss_history,
+                columns=["min", "max", "avg", "duration"],
+            ),
+            metric_name="Binary Cross Entropy",
+            metric_unit="1",
+            save_file=(finetune_dir / f"{eval_source}_loss_history.png"),
+        )
         np.savetxt(
             fname=(finetune_dir / f"{eval_source}_valid_history.csv"),
             X=valid_history,
@@ -315,6 +327,18 @@ def _main(args):
             fmt=(["%.4f"] * len(valid_metrics)),
             header=(",".join(valid_metrics)),
             comments="",
+        )
+        plot_valid_history(
+            valid_history_df=pd.DataFrame(
+                valid_history,
+                columns=valid_metrics,
+            ),
+            title="{} Linear Eval ({} layers, {} hidden dim)".format(
+                eval_source,
+                args.eval_num_layers,
+                args.eval_hidden_dim,
+            ),
+            save_file=(finetune_dir / f"{eval_source}_valid_history.png"),
         )
         # Linear evaluation
         dataset = data.RDD2022(

@@ -9,6 +9,34 @@ import pandas as pd
 from pavessl.utils import load_exp_arguments
 
 
+def plot_loss_history(
+    loss_history_df: pd.DataFrame,
+    metric_name: str,
+    metric_unit: str,
+    save_file: str | Path,
+):
+    loss_history_df = loss_history_df.copy()
+    loss_history_df["epoch"] = np.arange(1, len(loss_history_df) + 1)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.fill_between(
+        x="epoch",
+        y1="min",
+        y2="max",
+        color="tab:blue",
+        data=loss_history_df,
+        alpha=0.4,
+        label="min-max",
+    )
+    ax.plot("epoch", "avg", data=loss_history_df, color="red", label="avg")
+    epoch_avg_duration = loss_history_df["duration"].mean() / 60
+    ax.set_xlabel(f"Epoch [{epoch_avg_duration:.2f} mins/epoch]")
+    ax.set_ylabel(f"{metric_name} ({metric_unit})")
+    ax.legend()
+    ax.grid(axis="y", alpha=0.7, linestyle="--")
+    fig.savefig(save_file, dpi=300, bbox_inches="tight")
+    return fig, ax
+
+
 def _plot_loss_history(
     experiment_dir: Path,
     metric_name: str,
@@ -29,26 +57,7 @@ def _plot_loss_history(
             data=ckpt["loss_history"][: ckpt["epoch"]],
             columns=["min", "max", "avg", "duration"],
         )
-    loss_df = loss_df.copy()
-    loss_df["epoch"] = np.arange(1, len(loss_df) + 1)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.fill_between(
-        x="epoch",
-        y1="min",
-        y2="max",
-        color="tab:blue",
-        data=loss_df,
-        alpha=0.4,
-        label="min-max",
-    )
-    ax.plot("epoch", "avg", data=loss_df, color="red", label="avg")
-    epoch_avg_duration = loss_df["duration"].mean() / 60
-    ax.set_xlabel(f"Epoch [{epoch_avg_duration:.2f} mins/epoch]")
-    ax.set_ylabel(f"{metric_name} ({metric_unit})")
-    ax.legend()
-    ax.grid(axis="y", alpha=0.7, linestyle="--")
-    fig.savefig(save_file, dpi=300, bbox_inches="tight")
-    return fig, ax
+    return plot_loss_history(loss_df, metric_name, metric_unit, save_file)
 
 
 def _plot_knn_valid_history(
@@ -124,6 +133,47 @@ def _plot_knn_valid_history(
     fig.tight_layout()
     fig.savefig(save_file, dpi=300, bbox_inches="tight")
     return fig, ax
+
+
+def plot_valid_history(
+    valid_history_df: pd.DataFrame,
+    title: str,
+    save_file: str | Path,
+):
+    valid_history_df = valid_history_df.copy()
+    valid_history_df["epoch"] = np.arange(1, len(valid_history_df) + 1)
+    macro_metrics = sorted(
+        [c for c in valid_history_df.columns if c.startswith("macro_")]
+    )
+    weighted_metrics = sorted(
+        [c for c in valid_history_df.columns if c.startswith("weighted_")]
+    )
+    fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True, sharey=True)
+    axs[0].set_title(title)
+    for macro_metric in macro_metrics:
+        axs[0].plot(
+            "epoch",
+            macro_metric,
+            data=valid_history_df,
+            label=macro_metric[6:],
+        )
+    for weighted_metric in weighted_metrics:
+        axs[1].plot(
+            "epoch",
+            weighted_metric,
+            data=valid_history_df,
+            label=weighted_metric[9:],
+        )
+    axs[0].grid(axis="y", alpha=0.6, linestyle="--")
+    axs[0].set_ylabel("MACRO METRICS (%)")
+    axs[0].legend()
+    axs[1].grid(axis="y", alpha=0.6, linestyle="--")
+    axs[1].set_xlabel("Epoch")
+    axs[1].set_ylabel("WEIGHTED METRICS (%)")
+    axs[1].legend()
+    fig.tight_layout()
+    fig.savefig(save_file, dpi=300, bbox_inches="tight")
+    return fig, axs
 
 
 def _get_args_parser():
