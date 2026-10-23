@@ -16,7 +16,7 @@ from pavessl.scripts.eval import eval_utils
 def _predict(
     classifier: torch.nn.Module,
     dataset: Dataset,
-    pred_threshold: float,
+    thresholds: list[float],
     batch_size: int,
 ):
     data_loader = DataLoader(
@@ -45,15 +45,18 @@ def _predict(
         end = start + len(batch_preds)
         preds[start:end].copy_(batch_preds)
         targets[start:end].copy_(batch_targets)
+    thresholds = torch.tensor(thresholds).reshape(-1, 1, 1)
+    thresholds = thresholds.to(device=preds.device, non_blocking=True)
     preds = preds.sigmoid_()
-    preds = torch.where(preds > pred_threshold, 1.0, 0.0)
+    preds = preds.unsqueeze_(0).repeat(thresholds.numel(), 1, 1)
+    preds = torch.where(preds > thresholds, 1.0, 0.0)
     return preds.cpu().numpy(), targets.cpu().numpy()
 
 
 def _eval(
     classifier: torch.nn.Module,
     dataset: Dataset,
-    pred_threshold: float,
+    thresholds: list[float],
     batch_size: int,
     classes: list[str] | None = None,
 ):
@@ -61,14 +64,17 @@ def _eval(
     preds, targets = _predict(
         classifier=classifier,
         dataset=dataset,
-        pred_threshold=pred_threshold,
+        thresholds=thresholds,
         batch_size=batch_size,
     )
-    return eval_utils.multi_value_classification_metrics(
-        preds,
-        targets,
-        classes,
-    )
+    return [
+        eval_utils.multi_value_classification_metrics(
+            preds[i],
+            targets,
+            classes,
+        )
+        for i in range(len(thresholds))
+    ]
 
 
 def _train_one_epoch(
@@ -138,7 +144,6 @@ def _finetune(
     optim: Literal["adamw", "sgd"],
     batch_size: int,
     num_epochs: int,
-    pred_threshold: float,
 ):
     classes_weights = torch.where(
         train_labels["target"] > 0,
@@ -202,9 +207,9 @@ def _finetune(
         valid_results = _eval(
             classifier=classifier,
             dataset=valid_dataset,
-            pred_threshold=pred_threshold,
+            thresholds=[0.5],
             batch_size=batch_size,
-        )
+        )[0]
         if valid_history is None:
             valid_metrics = sorted(
                 metric
@@ -244,7 +249,7 @@ def _main(args):
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             pin_memory=args.pin,
-            header=f"(Features extraction: {eval_source} train split)",
+            header=f"(Feature extraction: {eval_source} train split)",
         )
         valid_features, valid_labels = eval_utils.compute_features_and_labels(
             model=backbone,
@@ -259,9 +264,9 @@ def _main(args):
             num_workers=args.num_workers,
             target_label_keys=["target"],
             pin_memory=args.pin,
-            header=f"(Features extraction: {eval_source} valid split)",
+            header=f"(Feature extraction: {eval_source} valid split)",
         )
-        state_filename = f"{args.eval_prefix}_{eval_source}_linear_head.pth"
+        state_filename = f"{args.eval_arch_str}_{eval_source}_linear_head.pth"
         classifier = models.build_classification_head(
             state_path=(args.start_points_dir / state_filename),
             in_dim=train_features.shape[-1],
@@ -284,13 +289,12 @@ def _main(args):
             optim=args.optim,
             batch_size=args.batch_size,
             num_epochs=args.epochs,
-            pred_threshold=args.eval_pred_threshold,
         )
         del train_features, train_labels
         del valid_features, valid_labels
-        # Save finetuned classifier
         finetune_dir = args.results_dir / "finetune"
         finetune_dir.mkdir(exist_ok=True)
+        # Save finetuned classifier
         utils.save_states(
             save_file=(finetune_dir / f"{eval_source}_head_net.pth"),
             states_dict=classifier.state_dict(),
@@ -329,18 +333,21 @@ def _main(args):
             pin_memory=args.pin,
             header=f"(Linear eval: {eval_source} test split)",
         )
-        metrics = _eval(
+        results = _eval(
             classifier=classifier,
             dataset=TensorDataset(test_features, test_labels["target"]),
-            pred_threshold=args.eval_pred_threshold,
+            thresholds=args.eval_thresholds,
             batch_size=args.batch_size,
             classes=dataset.classes,
         )
         # Save results
-        eval_utils.save_metrics_dataframe_to_csv(
-            metrics_df=metrics,
-            save_file=(args.results_dir / f"{eval_source}.csv"),
-        )
+        for i, thresh in enumerate(args.eval_thresholds):
+            eval_utils.save_metrics_dataframe_to_csv(
+                metrics_df=results[i],
+                save_file=(
+                    args.results_dir / f"{eval_source}_thresh{thresh:4.2f}.csv"
+                ),
+            )
         # Report duration
         duration = int(time.monotonic() - start_time)
         print(
@@ -352,9 +359,9 @@ def _main(args):
 
 
 def _check_args(args):
-    args.eval_prefix = f"{args.eval_num_layers}l_{args.eval_hidden_dim}d"
+    args.eval_arch_str = f"{args.eval_num_layers}l_{args.eval_hidden_dim}d"
     args.save_dir = args.experiment_dir
-    args.save_folder = f"{args.eval_folder}/linear_{args.eval_prefix}"
+    args.save_folder = f"{args.eval_folder}/linear_{args.eval_arch_str}"
     return utils.check_training_args(args)
 
 
@@ -370,9 +377,10 @@ def _get_args_parser():
         batch_size_default=16,
     )
     parser.add_argument(
-        "--eval-pred-threshold",
+        "--eval-thresholds",
         type=float,
-        default=0.5,
+        nargs="+",
+        default=[0.1, 0.2, 0.3, 0.4, 0.5, 0.7],
         help="Prediction threshold for linear evaluation.",
     )
     parser.add_argument(

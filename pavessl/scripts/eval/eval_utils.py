@@ -57,9 +57,11 @@ def multi_value_classification_metrics(
     targets: np.ndarray,
     classes: list[str] | None = None,
 ) -> dict[str, float | list[float]] | pd.DataFrame:
-    tps = (preds * targets).sum(axis=0)
-    fps = (preds * (1.0 - targets)).sum(axis=0)
-    tns = ((1.0 - preds) * (1.0 - targets)).sum(axis=0)
+    tps = ((preds * targets) > 0.0).sum(axis=0)
+    fps = ((preds * (1.0 - targets)) > 0.0).sum(axis=0)
+    tns = (((1.0 - preds) * (1.0 - targets)) > 0.0).sum(axis=0)
+    fns = (((1.0 - preds) * targets) > 0.0).sum(axis=0)
+    assert ((tps + fps + tns + fns) == len(preds)).all().item()
     counts = targets.sum(axis=0)
     class_weights = counts / counts.sum()
     accuracy = (tps + tns) / len(targets)
@@ -69,7 +71,11 @@ def multi_value_classification_metrics(
     f1_score = (
         2 * precision * sensitivity / np.maximum(precision + sensitivity, 1)
     )
-    metrics: dict[str, float | list[float]] = {
+    metrics: dict[str, float | list[float] | list[int]] = {
+        "tp": tps.tolist(),
+        "fp": fps.tolist(),
+        "tn": tns.tolist(),
+        "fn": fns.tolist(),
         "accuracy": accuracy.tolist(),
         "precision": precision.tolist(),
         "sensitivity": sensitivity.tolist(),
@@ -99,11 +105,16 @@ def metrics_dict_to_pandas(
         metric for metric, value in metrics.items() if isinstance(value, list)
     ]
     aggreg_prefixes = ["macro", "weighted"]
+    skip_aggreg = frozenset(["tp", "fp", "tn", "fn"])
     df_data = {"class": classes + aggreg_prefixes}
     for metric_name in metric_names:
-        df_data[metric_name] = metrics[metric_name] + [
-            metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes
-        ]
+        df_data[metric_name] = metrics[metric_name]
+        if metric_name in skip_aggreg:
+            df_data[metric_name].extend([np.nan] * len(aggreg_prefixes))
+        else:
+            df_data[metric_name].extend(
+                [metrics[f"{agg}_{metric_name}"] for agg in aggreg_prefixes]
+            )
     return pd.DataFrame(data=df_data)
 
 
@@ -112,11 +123,16 @@ def save_metrics_dataframe_to_csv(
     save_file: str | Path,
 ):
     new_df = {}
+    int_cols = frozenset(["tp", "fp", "tn", "fn"])
     for col_name in metrics_df.columns:
         if col_name == "class":
             to_pad = max(len(cls_name) for cls_name in metrics_df[col_name])
             to_pad = max(to_pad, len(col_name))
             str_column = metrics_df[col_name]
+        elif col_name in int_cols:
+            to_pad = max(len(str(val)) for val in metrics_df[col_name])
+            to_pad = max(to_pad, len(col_name)) + 1
+            str_column = metrics_df[col_name].map(str)
         else:
             to_pad = max(len(col_name), 7) + 1
             str_column = metrics_df[col_name].map(lambda x: f"{x:.5f}")
