@@ -190,12 +190,13 @@ def _main(args):
     # Save results
     k_padding = len(str(max(args.knn_ks)))
     for source_name, source_metrics in results.items():
+        source_save_dir = save_dir / source_name
+        source_save_dir.mkdir(exist_ok=True)
         for k_value, k_metrics in zip(args.knn_ks, source_metrics):
             k_value_str = str(k_value).rjust(k_padding, "0")
-            filename = f"{source_name}_k{k_value_str}.csv"
             eval_utils.save_metrics_dataframe_to_csv(
                 metrics_df=k_metrics,
-                save_file=(save_dir / filename),
+                save_file=(source_save_dir / f"k{k_value_str}.csv"),
             )
 
 

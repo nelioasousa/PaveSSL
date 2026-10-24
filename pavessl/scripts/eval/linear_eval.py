@@ -295,16 +295,16 @@ def _main(args):
         )
         del train_features, train_labels
         del valid_features, valid_labels
-        finetune_dir = args.results_dir / "finetune"
-        finetune_dir.mkdir(exist_ok=True)
+        finetune_dir = args.results_dir / eval_source / "finetune"
+        finetune_dir.mkdir(parents=True, exist_ok=True)
         # Save finetuned classifier
         utils.save_states(
-            save_file=(finetune_dir / f"{eval_source}_head_net.pth"),
+            save_file=(finetune_dir / "classification_head_net.pth"),
             states_dict=classifier.state_dict(),
         )
         # Save finetuning histories
         np.savetxt(
-            fname=(finetune_dir / f"{eval_source}_loss_history.csv"),
+            fname=(finetune_dir / "loss_history.csv"),
             X=loss_history,
             delimiter=",",
             fmt="%20.10e",
@@ -318,10 +318,10 @@ def _main(args):
             ),
             metric_name="Binary Cross Entropy",
             metric_unit="1",
-            save_file=(finetune_dir / f"{eval_source}_loss_history.png"),
+            save_file=(finetune_dir / "loss_history.png"),
         )
         np.savetxt(
-            fname=(finetune_dir / f"{eval_source}_valid_history.csv"),
+            fname=(finetune_dir / "valid_history.csv"),
             X=valid_history,
             delimiter=",",
             fmt=(["%.4f"] * len(valid_metrics)),
@@ -338,7 +338,7 @@ def _main(args):
                 args.eval_num_layers,
                 args.eval_hidden_dim,
             ),
-            save_file=(finetune_dir / f"{eval_source}_valid_history.png"),
+            save_file=(finetune_dir / "valid_history.png"),
         )
         # Linear evaluation
         dataset = data.RDD2022(
@@ -368,9 +368,7 @@ def _main(args):
         for i, thresh in enumerate(args.eval_thresholds):
             eval_utils.save_metrics_dataframe_to_csv(
                 metrics_df=results[i],
-                save_file=(
-                    args.results_dir / f"{eval_source}_thresh{thresh:4.2f}.csv"
-                ),
+                save_file=(finetune_dir.parent / f"thresh{thresh:4.2f}.csv"),
             )
         # Report duration
         duration = int(time.monotonic() - start_time)
