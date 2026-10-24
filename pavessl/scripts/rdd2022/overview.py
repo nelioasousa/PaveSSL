@@ -1,50 +1,62 @@
 import argparse
-import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from json import dump as json_dump
 from pathlib import Path
-from shutil import copy
+
+from PIL import Image, ImageDraw
+
+from pavessl.scripts.rdd2022.prepare import get_bboxes_from_xml_label
 
 
-def _main(args):
-    args.save_dir.mkdir(exist_ok=True, parents=True)
-    sizes_count = defaultdict(lambda: defaultdict(int))
-    objects_count = defaultdict(lambda: defaultdict(int))
-    samples_count = defaultdict(lambda: defaultdict(int))
-    for source_dir in list(args.data.iterdir()):
-        source_name = source_dir.name
-        samples_dir = args.save_dir / source_name
-        samples_dir.mkdir(exist_ok=True)
-        annotations_folder = source_dir / "train/annotations/xmls"
-        images_folder = source_dir / "train/images"
-        for label in annotations_folder.iterdir():
-            root = ET.parse(label)
-            size_tag = root.find("size")
-            size = (
-                "?x?"
-                if size_tag is None
-                else "{}x{}".format(
-                    size_tag.findtext("width", "?"),
-                    size_tag.findtext("height", "?"),
-                )
+def _main(data_path: Path, save_dir: Path, num_samples: int):
+    save_dir.mkdir(exist_ok=True, parents=True)
+    for source_dir in sorted(data_path.iterdir()):
+        sizes_count = defaultdict(int)
+        objects_count = defaultdict(int)
+        samples_count = defaultdict(int)
+        source_save_dir = save_dir / source_dir.name
+        source_save_dir.mkdir(exist_ok=True)
+        source_samples_dir = source_save_dir / "samples"
+        source_samples_dir.mkdir(exist_ok=True)
+        images_dir = source_dir / "train/images"
+        annots_dir = source_dir / "train/annotations/xmls"
+        classes = set()
+        for label in annots_dir.iterdir():
+            img = Image.open(images_dir / f"{label.stem}.jpg")
+            sizes_count["{}x{}".format(*img.size)] += 1
+            bboxes = get_bboxes_from_xml_label(label)
+            objs_count = Counter(bbox[0] for bbox in bboxes)
+            for obj_name, count in objs_count.items():
+                classes.add(obj_name)
+                objects_count[obj_name] += count
+                if samples_count[obj_name] < num_samples:
+                    sample_img = img.copy()
+                    draw = ImageDraw.Draw(sample_img)
+                    for name, *coords in bboxes:
+                        draw.rectangle(
+                            coords,
+                            outline=("red" if name == obj_name else "cyan"),
+                            width=2,
+                        )
+                    obj_folder = "__".join(obj_name.strip().split())
+                    obj_samples_dir = source_samples_dir / obj_folder
+                    try:
+                        sample_img.save(obj_samples_dir / f"{label.stem}.jpg")
+                    except FileNotFoundError:
+                        obj_samples_dir.mkdir()
+                        sample_img.save(obj_samples_dir / f"{label.stem}.jpg")
+                    samples_count[obj_name] += 1
+        with (source_save_dir / "classes.txt").open("w") as classes_file:
+            classes_file.write("\n".join(sorted(classes)))
+        with (source_save_dir / "summary.json").open("w") as summary_file:
+            json_dump(
+                obj={"sizes": sizes_count, "objects": objects_count},
+                fp=summary_file,
+                indent=2,
             )
-            sizes_count[source_name][size] += 1
-            label_obj_count = Counter(
-                obj.findtext("name", "?") for obj in root.iter("object")
-            )
-            for obj, count in label_obj_count.items():
-                objects_count[source_name][obj] += count
-                if samples_count[source_name][obj] < args.num_samples:
-                    sample_dir = samples_dir / "_".join(obj.split())
-                    sample_dir.mkdir(exist_ok=True)
-                    image_name = f"{label.stem}.jpg"
-                    copy(images_folder / image_name, sample_dir / image_name)
-                    samples_count[source_name][obj] += 1
-    with (args.save_dir / "overview.json").open("w") as f:
-        json_dump([sizes_count, objects_count], f, indent=2, sort_keys=True)
 
 
-def get_arg_parser():
+def _get_args_parser():
     parser = argparse.ArgumentParser(
         description="A simple overview of the RDD2022 dataset training sets.",
     )
@@ -52,7 +64,7 @@ def get_arg_parser():
         "--data",
         type=Path,
         default=Path("data/RDD2022"),
-        help="Path to the RDD2022 dataset.",
+        help="Path to the original RDD2022 dataset.",
     )
     parser.add_argument(
         "--save-dir",
@@ -72,9 +84,13 @@ def get_arg_parser():
 
 def _run():
     try:
-        parser = get_arg_parser()
+        parser = _get_args_parser()
         args = parser.parse_args()
-        _main(args)
+        _main(
+            data_path=args.data,
+            save_dir=args.save_dir,
+            num_samples=args.num_samples,
+        )
         return 0
     except Exception:
         import traceback

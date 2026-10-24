@@ -46,9 +46,12 @@ def _cut_image_and_fix_bboxes(img, bboxes):
     return img.crop((0, diff, NORWAY_TARGET_SIZE, img_height)), cut_bboxes
 
 
-def _get_bboxes_from_xml_label(label_path: Path):
-    label = ET.parse(label_path)
+def get_bboxes_from_xml_label(
+    label_path: Path,
+    class_name_map: dict[str, str] | None = None,
+) -> list[tuple[str, int, int, int, int]]:
     bboxes = []
+    label = ET.parse(label_path)
     for object in label.iter("object"):
         class_name = object.findtext("name", None)
         bbox = object.find("bndbox")
@@ -61,7 +64,9 @@ def _get_bboxes_from_xml_label(label_path: Path):
             ymax = round(float(bbox.findtext("ymax")))
         except TypeError:
             continue
-        bboxes.append((CLASS_RENAME_MAP[class_name], xmin, ymin, xmax, ymax))
+        if class_name_map is not None:
+            class_name = class_name_map[class_name]
+        bboxes.append((class_name, xmin, ymin, xmax, ymax))
     return bboxes
 
 
@@ -99,7 +104,7 @@ def _get_stratified_splits(
 ):
     pairs_by_class_group = defaultdict(list)
     for pair in image_label_pairs:
-        bboxes = _get_bboxes_from_xml_label(pair[1])
+        bboxes = get_bboxes_from_xml_label(pair[1], CLASS_RENAME_MAP)
         class_group = tuple(sorted(frozenset(name for name, *_ in bboxes)))
         pairs_by_class_group[class_group].append(pair)
     train_pairs, valid_pairs, test_pairs = [], [], []
@@ -120,7 +125,7 @@ def _get_stratified_splits(
 def _get_available_classes(img_ann_pairs: tuple[Path, Path]):
     classes = set()
     for _, ann in img_ann_pairs:
-        bboxes = _get_bboxes_from_xml_label(ann)
+        bboxes = get_bboxes_from_xml_label(ann, CLASS_RENAME_MAP)
         classes.update(cls_name for cls_name, *_ in bboxes)
     return sorted(classes)
 
@@ -207,7 +212,7 @@ def _main(args):
             bboxes = (
                 []
                 if label_path is None
-                else _get_bboxes_from_xml_label(label_path)
+                else get_bboxes_from_xml_label(label_path, CLASS_RENAME_MAP)
             )
             if source_folder.name == "Norway":
                 img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
@@ -219,7 +224,7 @@ def _main(args):
         for split, pairs in (("valid", valid_split), ("test", test_split)):
             for img_path, label_path in pairs:
                 img = Image.open(img_path)
-                bboxes = _get_bboxes_from_xml_label(label_path)
+                bboxes = get_bboxes_from_xml_label(label_path, CLASS_RENAME_MAP)
                 if source_folder.name == "Norway":
                     img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
                 img.save(dst_folder / f"{split}/images/{img_path.name}")
