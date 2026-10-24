@@ -16,13 +16,12 @@ from pavessl.data import get_rdd2022_sources
 
 
 def set_random_seeds(seed: int = 42):
-    """Set random seeds."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
 
-def get_num_parameters(model: torch.nn.Module):
+def get_num_parameters(model: torch.nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
 
 
@@ -33,7 +32,7 @@ def cosine_scheduler(
     niter_per_ep: int,
     warmup_epochs: int = 0,
     start_warmup_value: float = 0.0,
-):
+) -> np.ndarray:
     warmup_epochs = max(0, warmup_epochs)
     warmup_iters = warmup_epochs * niter_per_ep
     iters = np.arange(epochs * niter_per_ep - warmup_iters)
@@ -45,7 +44,7 @@ def cosine_scheduler(
     return np.concatenate((warmup_schedule, schedule), axis=0)
 
 
-def get_device():
+def get_device() -> torch.device:
     return torch.device(
         torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
     )
@@ -164,7 +163,7 @@ class SmoothedValue:
         )
 
 
-def get_time_string(seconds: int):
+def get_time_string(seconds: int) -> str:
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     # days, hours = divmod(hours, 24)

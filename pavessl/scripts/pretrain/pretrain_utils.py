@@ -30,7 +30,7 @@ def backbone_knn_eval(
     num_workers: int,
     pin_memory: bool = False,
     logging_header: str = "",
-) -> dict[str, list[dict[str, float | list[float]]]]:
+) -> dict[str, list[dict[str, float]]]:
     backbone.eval()
     results = knn_eval_all(
         model=backbone,

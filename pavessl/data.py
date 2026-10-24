@@ -1,6 +1,6 @@
 from itertools import accumulate
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 import torch
@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, Sampler
 from torchvision import tv_tensors
 
 
-def get_rdd2022_sources(subset_level: Literal[0, 1, 2, 3, 4]):
+def get_rdd2022_sources(subset_level: Literal[0, 1, 2, 3, 4]) -> list[str]:
     subset_level = min(max(subset_level, 0), 4)
     if not subset_level:
         return ["India"]
@@ -27,7 +27,12 @@ def get_rdd2022_sources(subset_level: Literal[0, 1, 2, 3, 4]):
     return sources[: (2 * subset_level)]
 
 
-def load_bboxes(annotation_path: str | Path):
+class BBoxes(TypedDict):
+    boxes: list[tuple[int, int, int, int]]
+    labels: list[int]
+
+
+def load_bboxes(annotation_path: str | Path) -> BBoxes:
     bboxes = {"boxes": [], "labels": []}
     with open(annotation_path, mode="r") as ann_file:
         for line in ann_file.read().strip().splitlines():
@@ -295,7 +300,7 @@ def get_augmentation(
     size: int,
     scale: tuple[float, float],
     stronger: bool = True,
-):
+) -> transforms_v2.Transform:
     # Geometric transformations
     random_crop = BottomRandomResizedCrop(size, scale)
     hflip = transforms_v2.RandomHorizontalFlip(p=0.5)

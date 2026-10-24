@@ -81,7 +81,7 @@ def knn_eval_one(
     as_dataframe: bool = False,
     pin_memory: bool = False,
     logging_header: str = "",
-) -> list[pd.DataFrame] | list[dict[str, float | list[float]]]:
+) -> list[pd.DataFrame] | list[dict[str, float | list[float] | list[int]]]:
     max_k = max(ks)
     classes, *sim_and_targets = _get_features_similarities_and_targets(
         model=model,
@@ -139,7 +139,7 @@ def knn_eval_all(
     logging_header: str = "",
 ) -> (
     dict[str, list[pd.DataFrame]]
-    | dict[str, list[dict[str, float | list[float]]]]
+    | dict[str, list[dict[str, float | list[float] | list[int]]]]
 ):
     return {
         source: knn_eval_one(

@@ -56,7 +56,7 @@ def multi_value_classification_metrics(
     preds: np.ndarray,
     targets: np.ndarray,
     classes: list[str] | None = None,
-) -> dict[str, float | list[float]] | pd.DataFrame:
+) -> dict[str, float | list[float] | list[int]] | pd.DataFrame:
     tps = ((preds * targets) > 0.0).sum(axis=0)
     fps = ((preds * (1.0 - targets)) > 0.0).sum(axis=0)
     tns = (((1.0 - preds) * (1.0 - targets)) > 0.0).sum(axis=0)
