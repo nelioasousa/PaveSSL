@@ -15,7 +15,7 @@ def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
     parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
     parser.add_argument(
-        "--eval-sources",
+        "--eval-source",
         choices=[
             "China_Drone",
             "China_MotorBike",
@@ -25,9 +25,8 @@ def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
             "Norway",
             "United_States",
         ],
-        nargs="+",
         type=str,
-        default=["India"],
+        default="India",
     )
     parser.add_argument("--eval-folder", type=str, default="evals")
     return parser

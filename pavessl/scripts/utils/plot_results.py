@@ -137,7 +137,6 @@ def _plot_knn_valid_history(
 
 def plot_valid_history(
     valid_history_df: pd.DataFrame,
-    title: str,
     save_file: str | Path,
 ):
     valid_history_df = valid_history_df.copy()
@@ -149,7 +148,6 @@ def plot_valid_history(
         [c for c in valid_history_df.columns if c.startswith("weighted_")]
     )
     fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True, sharey=True)
-    axs[0].set_title(title)
     for macro_metric in macro_metrics:
         axs[0].plot(
             "epoch",
