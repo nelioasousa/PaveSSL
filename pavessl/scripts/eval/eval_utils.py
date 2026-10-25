@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -142,6 +143,121 @@ def save_metrics_dataframe_to_csv(
         header=True,
         index=False,
     )
+
+
+def _plot_binary_confusion_matrix(
+    confusion_matrix: np.ndarray,
+    normalize: bool = False,
+):
+    confusion_matrix = confusion_matrix.reshape(2, 2)
+    gt_sum = confusion_matrix.sum(axis=0, keepdims=True, dtype=np.int32)
+    if normalize:
+        confusion_matrix = confusion_matrix / gt_sum
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ref_val = 1.0 if normalize else confusion_matrix.max()
+    img = ax.matshow(
+        confusion_matrix,
+        cmap="Greens",
+        vmin=0.0,
+        vmax=ref_val,
+    )
+    ref_val /= 3
+    for i in range(2):
+        for j in range(2):
+            val = confusion_matrix[i, j]
+            color = "white" if val > ref_val else "green"
+            ax.text(
+                j,
+                i,
+                f"{val:.2f}" if normalize else str(int(val)),
+                ha="center",
+                va="center",
+                color=color,
+            )
+    ax.tick_params(
+        axis="x",
+        top=False,
+        labeltop=False,
+        bottom=True,
+        labelbottom=True,
+    )
+    ax.set_xlabel("Ground truth")
+    ax.set_xticks([0, 1], [f"1 ({gt_sum[0, 0]})", f"0 ({gt_sum[0, 1]})"])
+    ax.set_ylabel("Prediction")
+    ax.set_yticks([0, 1], ["1", "0"])
+    fig.colorbar(img, ax=ax)
+    return fig, ax
+
+
+def plot_metrics(
+    metrics_dataframes: list[pd.DataFrame],
+    thresholds: list[float],
+    save_dir: Path,
+):
+    classes = None
+    metric_names = None
+    # Confusion matrices
+    cm_dir = save_dir / "confusion_matrices"
+    cm_dir.mkdir(parents=True, exist_ok=True)
+    for thresh, metrics in zip(thresholds, metrics_dataframes):
+        thresh *= 100
+        cm_thres_dir = cm_dir / f"thresh_{int(thresh)}"
+        cm_thres_dir.mkdir(exist_ok=True)
+        if classes is None:
+            classes = [
+                val
+                for val in metrics["class"]
+                if val != "macro" and val != "weighted"
+            ]
+            metric_names = list(metrics.columns)
+            metric_names.remove("class")
+        metrics.set_index("class", inplace=True)
+        for cls_name in classes:
+            cm = metrics.loc[cls_name][["tp", "fp", "fn", "tn"]].to_numpy()
+            fig, ax = _plot_binary_confusion_matrix(cm)
+            ax.set_title(cls_name)
+            fig.savefig(
+                cm_thres_dir / f"{cls_name}.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close(fig)
+            fig, ax = _plot_binary_confusion_matrix(cm, normalize=True)
+            ax.set_title(cls_name)
+            fig.savefig(
+                cm_thres_dir / f"{cls_name}_normalized.png",
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close(fig)
+    # Metrics versus threshold
+    for metric_name in metric_names:
+        fig, ax = plt.subplots(figsize=(10, 10))
+        for cls_name in classes:
+            metric_values = [
+                metrics.at[cls_name, metric_name]
+                for metrics in metrics_dataframes
+            ]
+            ax.plot(thresholds, metric_values, marker="o", label=cls_name)
+        if metric_name not in ("tp", "fp", "tn", "fn"):
+            for aggreg in ("macro", "weighted"):
+                metric_values = [
+                    metrics.at[aggreg, metric_name]
+                    for metrics in metrics_dataframes
+                ]
+                ax.plot(thresholds, metric_values, marker="o", label=aggreg)
+        ax.set_title(metric_name.upper())
+        ax.set_xlabel("Prediction threshold (%)")
+        ax.set_xticks(thresholds, [f"{int(100 * t)}%" for t in thresholds])
+        ax.set_ylabel(f"{metric_name.upper()} (%)")
+        ax.grid(axis="y", alpha=0.7, linestyle="--")
+        ax.legend()
+        fig.savefig(
+            fname=(save_dir / f"{metric_name}.png"),
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
 
 
 @torch.inference_mode()

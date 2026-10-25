@@ -370,6 +370,11 @@ def _main(args):
                 metrics_df=results[i],
                 save_file=(finetune_dir.parent / f"thresh{thresh:4.2f}.csv"),
             )
+        eval_utils.plot_metrics(
+            metrics_dataframes=results,
+            thresholds=args.eval_thresholds,
+            save_dir=(finetune_dir.parent / "plots"),
+        )
         # Report duration
         duration = int(time.monotonic() - start_time)
         print(
