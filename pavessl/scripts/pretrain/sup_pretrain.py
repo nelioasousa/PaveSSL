@@ -84,17 +84,12 @@ def _train_one_epoch(
     ):
         images = images.to(device=device, non_blocking=True)
         targets = labels["target"].to(device=device, non_blocking=True)
-        samples_weight = labels["source_weight"].to(
-            device=device,
-            non_blocking=True,
-        )
         classes_weights = torch.where(
             labels["target"] > 0,
             labels["pos_weights"],
             labels["neg_weights"],
         )
         classes_weights = classes_weights.to(device=device, non_blocking=True)
-        samples_weight.div_(samples_weight.sum())
         classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
         # Only the first group is regularized
         it = len(data_loader) * epoch + it
@@ -107,7 +102,6 @@ def _train_one_epoch(
             logits,
             targets,
             classes_weights,
-            samples_weight,
         )
         # Check for loss explosion
         loss_value = loss.item()

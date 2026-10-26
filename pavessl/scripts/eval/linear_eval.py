@@ -102,14 +102,13 @@ def _train_one_epoch(
     metric_logger.add_meter("wd", utils.SmoothedValue(fmt="{value:.2e}"))
     epoch_str = str(epoch + 1).rjust(len(str(num_epochs)), "0")
     header = f"(Finetune) Epoch: [{epoch_str}/{num_epochs}]"
-    for it, (features, targets, classes_weights, samples_weight) in enumerate(
+    for it, (features, targets, classes_weights) in enumerate(
         metric_logger.log_every(
             data_loader,
             max(5, 5 * len(data_loader) // (5 * 5)),
             header,
         )
     ):
-        samples_weight.div_(samples_weight.sum())
         # Only the first group is regularized
         it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
@@ -117,7 +116,7 @@ def _train_one_epoch(
         optimizer.param_groups[1]["lr"] = lr_schedule[it]
         # Foward pass and loss computation
         logits = classifier(features)
-        loss = loss_fn(logits, targets, classes_weights, samples_weight)
+        loss = loss_fn(logits, targets, classes_weights)
         # Loss explosion, unstable training
         loss_value = loss.item()
         if not math.isfinite(loss_value):
@@ -201,7 +200,6 @@ def _finetune(
             train_features,
             train_labels["target"],
             classes_weights,
-            train_labels["source_weight"],
         ),
         batch_size=batch_size,
         shuffle=True,

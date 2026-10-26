@@ -121,13 +121,11 @@ def _train_one_epoch(
     header = f"(Train) Epoch: [{epoch_str}/{args.epochs}]"
     # More or less 50 log lines per iteration
     log_every = max(5, 5 * len(data_loader) // (5 * 50))
-    for it, (global_views, local_views, samples_weight) in enumerate(
+    for it, (global_views, local_views) in enumerate(
         metric_logger.log_every(data_loader, log_every, header)
     ):
         global_views = global_views.to(device=device, non_blocking=True)
         local_views = local_views.to(device=device, non_blocking=True)
-        samples_weight = samples_weight.to(device=device, non_blocking=True)
-        samples_weight.div_(samples_weight.sum())
         # Only the first group is regularized
         it = len(data_loader) * epoch + it
         optimizer.param_groups[0]["weight_decay"] = wd_schedule[it]
@@ -140,7 +138,6 @@ def _train_one_epoch(
             teacher_out,
             student_g_out,
             student_l_out,
-            samples_weight,
             epoch,
         )
         # Check for loss explosion

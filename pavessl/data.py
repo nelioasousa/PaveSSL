@@ -1,3 +1,4 @@
+from collections import defaultdict
 from itertools import accumulate
 from math import ceil
 from pathlib import Path
@@ -111,30 +112,18 @@ class RDD2022(Dataset):
         self.weights = self._compute_weights()
 
     def _compute_weights(self):
-        if self.split != "train" or self.task == "detection":
-            weight = {"weight": 1.0}
-            return {source: weight for source in self.sources}
-        weights = {
-            source: {
-                "source_weight": self.acc_counts[-1]
-                / (count * len(self.sources))
-            }
-            for source, count in zip(self.sources, self.counts)
-        }
-        if self.task == "ssl":
-            return weights
+        if self.task != "classification" or self.split != "train":
+            return None
+        weights = defaultdict(dict)
         for source, count in zip(self.sources, self.counts):
             source_dir = self.sources_base_dir[source]
             classes_count = torch.zeros(len(self.classes))
             for image_name in self.images[source]:
                 ann_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
-                try:
-                    labels = [
-                        self.sources_classes[source][idx]
-                        for idx in load_bboxes(ann_path)["labels"]
-                    ]
-                except FileNotFoundError:
-                    continue
+                labels = [
+                    self.sources_classes[source][idx]
+                    for idx in load_bboxes(ann_path)["labels"]
+                ]
                 classes_count.add_(
                     torch.zeros(len(self.classes)).index_fill_(
                         dim=0,
@@ -186,7 +175,6 @@ class RDD2022(Dataset):
                 clamping_mode="hard",
             ),
             "labels": torch.tensor(bboxes["labels"], dtype=torch.long),
-            **self.weights[source],
         }
 
     def __getitem__(self, item_ref: int | tuple[str, int]):
@@ -204,7 +192,7 @@ class RDD2022(Dataset):
             scale=True,
         )
         if self.task == "ssl":
-            label = self.weights[source]
+            label = None
         else:
             label_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
             label = (
@@ -377,7 +365,7 @@ class SSLMultiviewTransform(transforms_v2.Transform):
 
     @staticmethod
     def multiview_collate_fn(batch):
-        # `batch` = [([v1, ..., vn], dict[str, float]), ...]
+        # `batch` = [([v1, ..., vn], None), ...]
         B = len(batch)  # batch size
         tensor_dtype = batch[0][0][0].dtype
         # Collating global views
@@ -406,12 +394,7 @@ class SSLMultiviewTransform(transforms_v2.Transform):
                 dim=0,
                 out=local_views[i * B : (i + 1) * B],
             )
-        # Collating samples weight
-        samples_weight = torch.tensor(
-            [sample[1]["source_weight"] for sample in batch],
-            dtype=tensor_dtype,
-        )
-        return global_views, local_views, samples_weight
+        return global_views, local_views
 
 
 class FourCornersCrop(transforms_v2.Transform):

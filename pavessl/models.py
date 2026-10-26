@@ -288,7 +288,6 @@ class SSLLoss(nn.Module):
         teacher_out,
         student_global_out,
         student_local_out,
-        weights,
         epoch,
     ):
         # Student sharpening
@@ -304,37 +303,25 @@ class SSLLoss(nn.Module):
         # Loss computation
         total_loss = 0.0
         ## Global vs Global
-        total_loss += (
-            weights
-            * torch.sum(
-                -centered[0] * F.log_softmax(student_global_out[1], dim=-1),
-                dim=-1,
-            )
-        ).sum()
-        total_loss += (
-            weights
-            * torch.sum(
-                -centered[1] * F.log_softmax(student_global_out[0], dim=-1),
-                dim=-1,
-            )
-        ).sum()
+        total_loss += torch.sum(
+            -centered[0] * F.log_softmax(student_global_out[1], dim=-1),
+            dim=-1,
+        ).mean()
+        total_loss += torch.sum(
+            -centered[1] * F.log_softmax(student_global_out[0], dim=-1),
+            dim=-1,
+        ).mean()
         ## Global vs Local
         for student_i_local in student_local_out:
-            total_loss += (
-                weights
-                * torch.sum(
-                    -centered[0] * F.log_softmax(student_i_local, dim=-1),
-                    dim=-1,
-                )
-            ).sum()
-            total_loss += (
-                weights
-                * torch.sum(
-                    -centered[1] * F.log_softmax(student_i_local, dim=-1),
-                    dim=-1,
-                )
-            ).sum()
-        total_loss /= 2 * self.num_local_crops + 2
+            total_loss += torch.sum(
+                -centered[0] * F.log_softmax(student_i_local, dim=-1),
+                dim=-1,
+            ).mean()
+            total_loss += torch.sum(
+                -centered[1] * F.log_softmax(student_i_local, dim=-1),
+                dim=-1,
+            ).mean()
+        total_loss /= (2 * self.num_local_crops + 2)
         # Update center
         self.update_center(teacher_out)
         return total_loss
@@ -470,14 +457,10 @@ class MultiValueClassificationLoss(nn.Module):
         logits,
         targets,
         classes_weights,
-        samples_weight=None,
     ):
         bce = nn.functional.binary_cross_entropy_with_logits(
             input=logits,
             target=targets,
             reduction="none",
         )
-        loss = bce.mul_(classes_weights).sum(dim=-1)
-        if samples_weight is None:
-            return loss.mean()
-        return loss.mul_(samples_weight).sum()
+        return bce.mul_(classes_weights).sum(dim=-1).mean()
