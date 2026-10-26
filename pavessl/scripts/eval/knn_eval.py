@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 from torchvision.transforms.v2 import Resize
 
-from pavessl import data, utils, GLOBAL_SIZE
+from pavessl import GLOBAL_SIZE, data, utils
 from pavessl.scripts.eval import eval_utils
 
 
@@ -170,9 +170,7 @@ def _main(args):
     backbone.eval()
     device = utils.get_device()
     backbone = backbone.to(device=device, non_blocking=True)
-    save_dir = (
-        args.experiment_dir / f"eval/knn/{args.eval_source}"
-    )
+    save_dir = args.experiment_dir / f"eval/knn/{args.eval_source}"
     save_dir.mkdir(parents=True, exist_ok=True)
     metrics = knn_eval_one(
         model=backbone,

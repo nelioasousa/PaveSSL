@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from pavessl import models, utils, GLOBAL_SIZE, GLOBAL_SCALE
+from pavessl import GLOBAL_SCALE, GLOBAL_SIZE, models, utils
 from pavessl.data import RDD2022, get_augmentation
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
 from pavessl.scripts.pretrain import pretrain_utils
@@ -281,7 +281,6 @@ def _pretrain(args):
     )
     duration = int(time.monotonic() - training_start)
     print(f"Training ended in {utils.get_time_string(duration)}!")
-    return classifier
 
 
 def _check_args(args):

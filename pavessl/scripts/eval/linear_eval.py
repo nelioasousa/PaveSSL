@@ -9,10 +9,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision.transforms.v2 import Resize
 
-from pavessl import data, models, utils, GLOBAL_SIZE
+from pavessl import GLOBAL_SIZE, data, models, utils
 from pavessl.scripts.eval import eval_utils
-from pavessl.scripts.utils.plot_results import plot_loss_history
-from pavessl.scripts.utils.plot_results import plot_valid_history
+from pavessl.scripts.utils.plot_results import (
+    plot_loss_history,
+    plot_valid_history,
+)
 
 
 @torch.inference_mode()
@@ -133,7 +135,12 @@ def _train_one_epoch(
     return metric_logger
 
 
-def _save_and_plot_histories(loss_history, valid_history, valid_metrics, save_dir):
+def _save_and_plot_histories(
+    loss_history,
+    valid_history,
+    valid_metrics,
+    save_dir,
+):
     np.savetxt(
         fname=(save_dir / "loss_history.csv"),
         X=loss_history,

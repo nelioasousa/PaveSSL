@@ -7,8 +7,14 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from pavessl import models, utils
-from pavessl import GLOBAL_SIZE, GLOBAL_SCALE, LOCAL_SIZE, LOCAL_SCALE
+from pavessl import (
+    GLOBAL_SCALE,
+    GLOBAL_SIZE,
+    LOCAL_SCALE,
+    LOCAL_SIZE,
+    models,
+    utils,
+)
 from pavessl.data import RDD2022, SSLMultiviewTransform
 from pavessl.scripts.eval.knn_eval import add_knn_eval_args
 from pavessl.scripts.pretrain import pretrain_utils

@@ -5,8 +5,7 @@ import torch
 import torchvision.transforms.v2.functional as F_v2
 from PIL import Image
 
-from pavessl import data, GLOBAL_SIZE, GLOBAL_SCALE, LOCAL_SCALE
-from pavessl.scripts.pretrain import pretrain_utils
+from pavessl import GLOBAL_SCALE, GLOBAL_SIZE, LOCAL_SCALE, data
 
 
 def _main(args):
