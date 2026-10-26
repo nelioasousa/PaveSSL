@@ -171,7 +171,7 @@ def _main(args):
     device = utils.get_device()
     backbone = backbone.to(device=device, non_blocking=True)
     save_dir = (
-        args.experiment_dir / f"{args.eval_folder}/knn/{args.eval_source}"
+        args.experiment_dir / f"eval/knn/{args.eval_source}"
     )
     save_dir.mkdir(parents=True, exist_ok=True)
     metrics = knn_eval_one(

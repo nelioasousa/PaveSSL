@@ -383,7 +383,7 @@ def _main(args):
 def _check_args(args):
     args.eval_arch_str = f"{args.eval_num_layers}l_{args.eval_hidden_dim}d"
     args.save_dir = args.experiment_dir
-    args.save_folder = f"{args.eval_folder}/linear_{args.eval_arch_str}"
+    args.save_folder = f"eval/linear_{args.eval_arch_str}"
     return utils.check_training_args(args)
 
 

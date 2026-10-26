@@ -433,7 +433,7 @@ def _pretrain(args):
         device=device,
         classes=test_dataset.classes,
     )
-    test_results_dir = args.results_dir / "evals"
+    test_results_dir = args.results_dir / "eval"
     test_results_dir.mkdir(exist_ok=True)
     for i, thresh in enumerate(args.eval_thresholds):
         eval_utils.save_metrics_dataframe_to_csv(

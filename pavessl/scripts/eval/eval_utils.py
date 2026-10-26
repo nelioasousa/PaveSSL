@@ -28,7 +28,6 @@ def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
         type=str,
         default="India",
     )
-    parser.add_argument("--eval-folder", type=str, default="evals")
     return parser
 
 
