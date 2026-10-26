@@ -218,15 +218,10 @@ class SourcesSampler(Sampler[list[tuple[str, int]]]):
         self.sources = rdd_dataset.sources
         self.counts = rdd_dataset.counts
         # For iteration
-        max_source = max(self.counts)
-        self._total_batches = max_source // self.images_per_source
+        self._total_batches = min(self.counts) // self.images_per_source
         self._current_batch = self._total_batches
         self._indexes = tuple(
-            np.tile(
-                A=np.arange(count, dtype=np.int32),
-                reps=ceil(max_source / count),
-            )
-            for count in self.counts
+            np.arange(count, dtype=np.int32) for count in self.counts
         )
 
     def __len__(self):
@@ -234,10 +229,8 @@ class SourcesSampler(Sampler[list[tuple[str, int]]]):
 
     def __iter__(self):
         self._current_batch = 0
-        for i, count in enumerate(self.counts):
-            indexes = self._indexes[i]
-            for j in range(len(indexes) // count):
-                np.random.shuffle(indexes[j * count : (j + 1) * count])
+        for indexes in self._indexes:
+            np.random.shuffle(indexes)
         return self
 
     def __next__(self):
