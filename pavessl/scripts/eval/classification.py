@@ -248,9 +248,14 @@ def _train_one_epoch(
     return metric_logger
 
 
-def _save_and_plot_histories(loss_history, valid_history, valid_metrics, args):
+def _save_and_plot_histories(
+    loss_history,
+    valid_history,
+    valid_metrics,
+    save_dir,
+):
     np.savetxt(
-        fname=(args.results_dir / "loss_history.csv"),
+        fname=(save_dir / "loss_history.csv"),
         X=loss_history,
         delimiter=",",
         fmt="%20.10e",
@@ -264,10 +269,10 @@ def _save_and_plot_histories(loss_history, valid_history, valid_metrics, args):
         ),
         metric_name="Binary Cross Entropy",
         metric_unit="1",
-        save_file=(args.results_dir / "loss_history.png"),
+        save_file=(save_dir / "loss_history.png"),
     )
     np.savetxt(
-        fname=(args.results_dir / "valid_history.csv"),
+        fname=(save_dir / "valid_history.csv"),
         X=valid_history,
         delimiter=",",
         fmt=(["%.4f"] * len(valid_metrics)),
@@ -279,7 +284,7 @@ def _save_and_plot_histories(loss_history, valid_history, valid_metrics, args):
             valid_history,
             columns=valid_metrics,
         ),
-        save_file=(args.results_dir / "valid_history.png"),
+        save_file=(save_dir / "valid_history.png"),
     )
 
 
@@ -413,8 +418,13 @@ def _pretrain(args):
                 else states_dict["epoch"]
             ),
         )
-    # Save histories and report run duration
-    _save_and_plot_histories(loss_history, valid_history, valid_metrics, args)
+    # Save histories
+    _save_and_plot_histories(
+        loss_history,
+        valid_history,
+        valid_metrics,
+        args.results_dir,
+    )
     # Evaluate on test set
     test_dataset = RDD2022(
         data_path=args.data,

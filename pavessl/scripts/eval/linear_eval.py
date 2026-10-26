@@ -133,6 +133,41 @@ def _train_one_epoch(
     return metric_logger
 
 
+def _save_and_plot_histories(loss_history, valid_history, valid_metrics, save_dir):
+    np.savetxt(
+        fname=(save_dir / "loss_history.csv"),
+        X=loss_history,
+        delimiter=",",
+        fmt="%20.10e",
+        header="min,max,avg,duration",
+        comments="",
+    )
+    plot_loss_history(
+        loss_history_df=pd.DataFrame(
+            loss_history,
+            columns=["min", "max", "avg", "duration"],
+        ),
+        metric_name="Binary Cross Entropy",
+        metric_unit="1",
+        save_file=(save_dir / "loss_history.png"),
+    )
+    np.savetxt(
+        fname=(save_dir / "valid_history.csv"),
+        X=valid_history,
+        delimiter=",",
+        fmt=(["%.4f"] * len(valid_metrics)),
+        header=(",".join(valid_metrics)),
+        comments="",
+    )
+    plot_valid_history(
+        valid_history_df=pd.DataFrame(
+            valid_history,
+            columns=valid_metrics,
+        ),
+        save_file=(save_dir / "valid_history.png"),
+    )
+
+
 def _finetune(
     classifier: torch.nn.Module,
     train_features: torch.Tensor,
@@ -295,45 +330,19 @@ def _main(args):
     )
     del train_features, train_labels
     del valid_features, valid_labels
+    # Save finetuned classifier
     finetune_dir = args.results_dir / args.eval_source / "finetune"
     finetune_dir.mkdir(parents=True, exist_ok=True)
-    # Save finetuned classifier
     utils.save_states(
         save_file=(finetune_dir / "classification_head_net.pth"),
         states_dict=classifier.state_dict(),
     )
-    # Save finetuning histories
-    np.savetxt(
-        fname=(finetune_dir / "loss_history.csv"),
-        X=loss_history,
-        delimiter=",",
-        fmt="%20.10e",
-        header="min,max,avg,duration",
-        comments="",
-    )
-    plot_loss_history(
-        loss_history_df=pd.DataFrame(
-            loss_history,
-            columns=["min", "max", "avg", "duration"],
-        ),
-        metric_name="Binary Cross Entropy",
-        metric_unit="1",
-        save_file=(finetune_dir / "loss_history.png"),
-    )
-    np.savetxt(
-        fname=(finetune_dir / "valid_history.csv"),
-        X=valid_history,
-        delimiter=",",
-        fmt=(["%.4f"] * len(valid_metrics)),
-        header=(",".join(valid_metrics)),
-        comments="",
-    )
-    plot_valid_history(
-        valid_history_df=pd.DataFrame(
-            valid_history,
-            columns=valid_metrics,
-        ),
-        save_file=(finetune_dir / "valid_history.png"),
+    # Save histories
+    _save_and_plot_histories(
+        loss_history,
+        valid_history,
+        valid_metrics,
+        finetune_dir,
     )
     # Linear evaluation
     dataset = data.RDD2022(
