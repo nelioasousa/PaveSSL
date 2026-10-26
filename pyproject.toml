@@ -29,6 +29,8 @@ sup-pretrain = "pavessl.scripts.pretrain.sup_pretrain:_run"
 # Evaluations
 knn-eval = "pavessl.scripts.eval.knn_eval:_run"
 linear-eval = "pavessl.scripts.eval.linear_eval:_run"
+# Downstream
+classification = "pavessl.scripts.eval.classification:_run"
 # Utilities
 plot-results = "pavessl.scripts.utils.plot_results:_run"
 augmentations = "pavessl.scripts.utils.augmentations:_run"

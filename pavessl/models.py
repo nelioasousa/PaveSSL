@@ -470,7 +470,7 @@ class MultiValueClassificationLoss(nn.Module):
         logits,
         targets,
         classes_weights,
-        samples_weight,
+        samples_weight=None,
     ):
         bce = nn.functional.binary_cross_entropy_with_logits(
             input=logits,
@@ -478,4 +478,6 @@ class MultiValueClassificationLoss(nn.Module):
             reduction="none",
         )
         loss = bce.mul_(classes_weights).sum(dim=-1)
+        if samples_weight is None:
+            return loss.mean()
         return loss.mul_(samples_weight).sum()

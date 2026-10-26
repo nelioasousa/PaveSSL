@@ -236,6 +236,7 @@ def _main(args):
         experiment_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
+    backbone.eval()
     backbone = backbone.to(device=device, non_blocking=True)
     transform = Resize(size=GLOBAL_SIZE)
     start_time = time.monotonic()

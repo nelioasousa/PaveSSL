@@ -167,6 +167,7 @@ def _main(args):
         experiment_dir=args.experiment_dir,
         checkpoint_key=args.checkpoint_key,
     )
+    backbone.eval()
     device = utils.get_device()
     backbone = backbone.to(device=device, non_blocking=True)
     save_dir = (

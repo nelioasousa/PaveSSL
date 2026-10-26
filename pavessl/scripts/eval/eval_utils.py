@@ -12,8 +12,8 @@ from pavessl import models, utils
 
 
 def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
-    parser.add_argument("-d", "--experiment-dir", type=Path, required=True)
-    parser.add_argument("-k", "--checkpoint-key", type=str, required=True)
+    parser.add_argument("-d", "--experiment-dir", type=Path)
+    parser.add_argument("-k", "--checkpoint-key", type=str)
     parser.add_argument(
         "--eval-source",
         choices=[
@@ -48,7 +48,6 @@ def load_experiment_backbone(
         if key.startswith("backbone.")
     }
     backbone.load_state_dict(state_dict, strict=True)
-    backbone.eval()
     return backbone
 
 
