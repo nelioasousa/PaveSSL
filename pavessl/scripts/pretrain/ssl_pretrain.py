@@ -69,7 +69,7 @@ def _get_train_data_loader(args):
     )
     train_loader = DataLoader(
         dataset=train_dataset,
-        batch_sampler=train_dataset.get_balanced_sampler(args.batch_size),
+        batch_sampler=train_dataset.get_sources_sampler(args.batch_size),
         num_workers=args.num_workers,
         collate_fn=SSLMultiviewTransform.multiview_collate_fn,
         pin_memory=args.pin,

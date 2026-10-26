@@ -1,4 +1,5 @@
 from itertools import accumulate
+from math import ceil
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -219,63 +220,51 @@ class RDD2022(Dataset):
             return image, label
         return self.transform(image, label)
 
-    def get_balanced_sampler(self, batch_size: int):
-        return SourceBalancedSampler(self, batch_size)
+    def get_sources_sampler(self, batch_size: int):
+        return SourcesSampler(self, batch_size // len(self.sources))
 
 
-class SourceBalancedSampler(Sampler[list[tuple[str, int]]]):
-    def __init__(self, rdd_dataset: RDD2022, batch_size: int):
-        self.batch_size = batch_size
-        self._sources_count = {
-            source: count
-            for source, count in zip(rdd_dataset.sources, rdd_dataset.counts)
-        }
-        self._sources_participation = {
-            source: max(1, round(batch_size * count / len(rdd_dataset)))
-            for source, count in self._sources_count.items()
-        }
-        # Match participations to batch size exactly
-        diff = self.batch_size - sum(self._sources_participation.values())
-        inc = -1 if diff < 0 else 1
-        inc_order = sorted(
-            self._sources_participation,
-            key=(lambda x: self._sources_participation[x]),
-            reverse=(diff < 0),
-        )
-        for i in range(abs(diff)):
-            self._sources_participation[inc_order[i]] += inc
+class SourcesSampler(Sampler[list[tuple[str, int]]]):
+    def __init__(self, rdd_dataset: RDD2022, images_per_source: int):
+        self.images_per_source = images_per_source
+        self.sources = rdd_dataset.sources
+        self.counts = rdd_dataset.counts
         # For iteration
-        self._total_batches = min(
-            count // self._sources_participation[source]
-            for source, count in self._sources_count.items()
+        max_source = max(self.counts)
+        self._total_batches = max_source // self.images_per_source
+        self._current_batch = self._total_batches
+        self._indexes = tuple(
+            np.tile(
+                A=np.arange(count, dtype=np.int32),
+                reps=ceil(max_source / count),
+            )
+            for count in self.counts
         )
-        self._batch = None
-        self._indexes = {
-            source: np.arange(count, dtype=np.int32)
-            for source, count in self._sources_count.items()
-        }
 
     def __len__(self):
         return self._total_batches
 
     def __iter__(self):
-        self._batch = 0
-        for indexes in self._indexes.values():
-            np.random.shuffle(indexes)
+        self._current_batch = 0
+        for i, count in enumerate(self.counts):
+            indexes = self._indexes[i]
+            for j in range(len(indexes) // count):
+                np.random.shuffle(indexes[j * count : (j + 1) * count])
         return self
 
     def __next__(self):
-        if self._batch == self._total_batches:
+        if self._current_batch == self._total_batches:
             raise StopIteration("No more full batches")
-        indices = []
-        i = self._batch
-        for source, size in self._sources_participation.items():
-            indices.extend(
-                (source, indx.item())
-                for indx in self._indexes[source][i * size : (i + 1) * size]
+        batch = []
+        start = self._current_batch * self.images_per_source
+        end = start + self.images_per_source
+        for i, source in enumerate(self.sources):
+            batch.extend(
+                (source, idx.item())
+                for idx in self._indexes[i][start:end]
             )
-        self._batch += 1
-        return indices
+        self._current_batch += 1
+        return batch
 
 
 class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
