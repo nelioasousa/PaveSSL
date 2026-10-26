@@ -153,14 +153,16 @@ class RDD2022(Dataset):
             self.sources_classes[source][idx]
             for idx in load_bboxes(annotation_path)["labels"]
         ]
-        return {
+        classification_label = {
             "target": torch.zeros(len(self.classes)).index_fill_(
                 dim=0,
                 index=torch.tensor(labels, dtype=torch.long),
                 value=1.0,
             ),
-            **self.weights[source],
         }
+        if self.weights is not None:
+            classification_label.update(self.weights[source])
+        return classification_label
 
     def _load_detection_label(self, annotation_path, img_dim, source):
         bboxes = load_bboxes(annotation_path)
