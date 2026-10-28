@@ -463,7 +463,8 @@ def _main(args):
 
 
 def _check_args(args):
-    args.save_dir = args.experiment_dir / "classification"
+    if args.experiment_dir is not None:
+        args.save_dir = args.experiment_dir / "classification"
     args.freeze = (
         args.epochs if args.freeze < 0 else min(args.freeze, args.epochs)
     )
@@ -478,6 +479,7 @@ def _get_args_parser():
     parser = eval_utils.add_eval_args(parser)
     parser = utils.add_training_args(
         parser=parser,
+        save_dir_default="data/results/classification",
         save_folder_default="default",
         sources_subset_default=0,
         epochs_default=100,
