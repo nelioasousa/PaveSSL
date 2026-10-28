@@ -1,6 +1,5 @@
 from collections import defaultdict
 from itertools import accumulate
-from math import ceil
 from pathlib import Path
 from typing import Literal, TypedDict
 

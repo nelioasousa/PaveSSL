@@ -1,5 +1,6 @@
 import argparse
 import os
+import pathlib
 import pickle
 import time
 from collections import defaultdict, deque
@@ -426,6 +427,16 @@ def load_exp_arguments(
 ) -> argparse.Namespace | None:
     try:
         with (Path(experiment_path) / "run.args").open("rb") as args_file:
-            return pickle.load(args_file)
+            try:
+                return pickle.load(args_file)
+            except NotImplementedError:
+                posix_path = pathlib.PosixPath
+                try:
+                    pathlib.PosixPath = pathlib.WindowsPath
+                    pathlib.WindowsPath = posix_path
+                    return pickle.load(args_file)
+                finally:
+                    pathlib.WindowsPath = pathlib.PosixPath
+                    pathlib.PosixPath = posix_path
     except FileNotFoundError:
         return None
