@@ -108,34 +108,42 @@ class RDD2022(Dataset):
         self.counts = [len(self.images[source]) for source in sources]
         self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
-        self.weights = self._compute_weights()
+        self.weights = (
+            None if self.task != "classification" or self.split != "train"
+            else self._compute_weights()
+        )
 
     def _compute_weights(self):
-        if self.task != "classification" or self.split != "train":
-            return None
-        weights = defaultdict(dict)
-        for source, count in zip(self.sources, self.counts):
+        per_source_counts = {}
+        classes_count = torch.zeros(len(self.classes))
+        for source in self.sources:
             source_dir = self.sources_base_dir[source]
-            classes_count = torch.zeros(len(self.classes))
+            source_counts = torch.zeros(len(self.classes))
             for image_name in self.images[source]:
                 ann_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
                 labels = [
                     self.sources_classes[source][idx]
                     for idx in load_bboxes(ann_path)["labels"]
                 ]
-                classes_count.add_(
+                source_counts.add_(
                     torch.zeros(len(self.classes)).index_fill_(
                         dim=0,
                         index=torch.tensor(labels, dtype=torch.long),
                         value=1.0,
                     )
                 )
-            pos_weights = count / (2 * classes_count).clip(min=1)
-            pos_weights = torch.where(classes_count > 0, pos_weights, 0)
-            neg_weights = count / (2 * (count - classes_count)).clip(min=1)
-            neg_weights = torch.where(classes_count > 0, neg_weights, 0)
-            weights[source]["pos_weights"] = pos_weights
-            weights[source]["neg_weights"] = neg_weights
+            per_source_counts[source] = source_counts
+            classes_count.add_(source_counts)
+        pos_weights = len(self) / (2 * classes_count)
+        neg_weights = len(self) / (2 * (len(self) - classes_count))
+        weights = defaultdict(dict)
+        for source, source_counts in per_source_counts.items():
+            weights[source]["pos_weights"] = torch.where(
+                source_counts > 0, pos_weights, 0,
+            )
+            weights[source]["neg_weights"] = torch.where(
+                source_counts > 0, neg_weights, 0,
+            )
         return weights
 
     def __len__(self):
