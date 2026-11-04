@@ -388,7 +388,7 @@ def _get_args_parser():
     parser.add_argument(
         "--num-local-views",
         type=int,
-        default=4,
+        default=2,
         help="Generate N >= 1 local views for each image.",
     )
     parser.add_argument(
@@ -406,7 +406,7 @@ def _get_args_parser():
     parser.add_argument(
         "--ssl-freeze-last-layer-for",
         type=int,
-        default=5,
+        default=10,
         help="Freeze last layer of student projection heads for N epochs.",
     )
     parser.add_argument(
