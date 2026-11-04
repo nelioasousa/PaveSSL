@@ -46,12 +46,13 @@ def load_bboxes(annotation_path: str | Path) -> BBoxes:
 class RDD2022(Dataset):
     def __init__(
         self,
-        data_path: Path,
+        data_path: str | Path,
         sources: str | list[str] | Literal["all"],
         split: Literal["train", "valid", "test"],
         task: Literal["ssl", "classification", "detection"],
         transform: transforms_v2.Transform | None = None,
     ):
+        data_path = Path(data_path)
         if not data_path.is_dir():
             raise NotADirectoryError(f'Not a directory: "{data_path}"')
         all_sources = [s.name for s in data_path.iterdir() if s.is_dir()]
