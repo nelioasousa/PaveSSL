@@ -281,13 +281,6 @@ def get_augmentation(
     scale: tuple[float, float],
     stronger: bool = True,
 ) -> transforms_v2.Transform:
-    # Geometric transformations
-    random_crop = BottomRandomResizedCrop(size, scale)
-    hflip = transforms_v2.RandomHorizontalFlip(p=0.5)
-    rotation = transforms_v2.RandomApply(
-        [transforms_v2.RandomRotation(degrees=10, expand=False)],
-        p=0.4,
-    )
     # Photometric transformations
     ### CollorJitter is known to return NaN values
     ### Best to put it before any other photometric transformations
@@ -321,9 +314,8 @@ def get_augmentation(
     # Augmentations composition
     augmentations = transforms_v2.Compose(
         [
-            rotation,
-            random_crop,
-            hflip,
+            BottomRandomResizedCrop(size, scale),
+            transforms_v2.RandomHorizontalFlip(p=0.5),
             *photometric_transforms,
         ]
     )
