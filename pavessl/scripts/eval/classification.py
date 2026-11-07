@@ -115,7 +115,7 @@ def _get_data(args):
             sources=args.eval_source,
             split="train",
             task="classification",
-            transform=get_augmentation(TUNE_SIZE, TUNE_SCALE),
+            transform=get_augmentation(TUNE_SIZE, TUNE_SCALE, stronger=False),
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
