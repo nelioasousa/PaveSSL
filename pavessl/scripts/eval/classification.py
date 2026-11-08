@@ -311,9 +311,6 @@ def _main(args):
     )
     loss_fn = _get_loss_function(device)
     optimizer = models.get_optimizer(classifier, args.optim)
-    if args.freeze:
-        for p in classifier.backbone.parameters():
-            p.requires_grad = False
     # Restore training vars if any
     run_variables = {
         "epoch": 0,
@@ -356,6 +353,9 @@ def _main(args):
         niter_per_ep=len(train_loader),
     )
     # Training
+    if args.freeze and start_epoch < args.freeze:
+        for p in classifier.backbone.parameters():
+            p.requires_grad = False
     training_start = time.monotonic()
     for epoch in range(start_epoch, args.epochs):
         utils.set_random_seeds(42 + epoch)
