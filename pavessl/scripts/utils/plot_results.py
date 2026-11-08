@@ -64,6 +64,8 @@ def _plot_knn_valid_history(
     experiment_dir: Path,
     model_names: list[str],
     save_file: Path,
+    ks: list[int] | None = None,
+    metrics: list[str] | None = None,
 ):
     exp_args = load_exp_arguments(experiment_dir)
     try:
@@ -86,21 +88,24 @@ def _plot_knn_valid_history(
                 for metric in ckpt["valid_metrics"]
             ],
         )
-    eval_metrics = sorted(
-        frozenset(col.split("__")[-1] for col in valid_df.columns)
+    ks = exp_args.knn_ks if ks is None else ks
+    metrics = (
+        sorted(frozenset(col.split("__")[-1] for col in valid_df.columns))
+        if metrics is None
+        else metrics
     )
     valid_df = valid_df.copy()
     valid_df["epoch"] = np.arange(1, len(valid_df) + 1)
     fig, axs = plt.subplots(
-        len(eval_metrics),
-        len(exp_args.knn_ks),
-        figsize=(len(exp_args.knn_ks) * 6, len(eval_metrics) * 4),
+        len(metrics),
+        len(ks),
+        figsize=(len(ks) * 6.5, len(metrics) * 4),
         sharex=True,
         sharey="row",
     )
     for (x, metric), (y, k_value), (color_index, source) in product(
-        enumerate(eval_metrics),
-        enumerate(exp_args.knn_ks),
+        enumerate(metrics),
+        enumerate(ks),
         enumerate(exp_args.sources),
     ):
         ax = axs[x, y]
@@ -117,12 +122,12 @@ def _plot_knn_valid_history(
         ax.grid(axis="y", alpha=0.6, linestyle="--")
         if not x:
             ax.set_title(f"K = {k_value}")
-        if x + 1 == len(eval_metrics):
+        if x + 1 == len(metrics):
             ax.set_xlabel("Epoch")
         if not y:
-            ax.set_ylabel(f"{metric.upper()} (%)")
+            ax.set_ylabel(f"{metric.upper().replace('_', ' ')} (%)")
             ax.legend(ncols=2)
-        if y + 1 == len(exp_args.knn_ks):
+        if y + 1 == len(ks):
             ax.tick_params(
                 axis="y",
                 left=False,
@@ -219,38 +224,68 @@ def _get_args_parser():
 
 
 def _main(args):
-    # Self-supervised pre-training
-    for ssl_exp in args.ssl_exps:
-        exp_dir = args.ssl_pretrain_dir / ssl_exp
-        plots_dir = exp_dir / args.save_folder
-        plots_dir.mkdir(exist_ok=True)
-        _ = _plot_loss_history(
-            experiment_dir=exp_dir,
-            metric_name="Cross Entropy",
-            metric_unit="nats",
-            save_file=(plots_dir / "loss_history.png"),
-        )
-        _ = _plot_knn_valid_history(
-            experiment_dir=exp_dir,
-            model_names=("student", "teacher"),
-            save_file=(plots_dir / "valid_history.png"),
-        )
-    # Supervised pre-training
-    for sup_exp in args.sup_exps:
-        exp_dir = args.sup_pretrain_dir / sup_exp
-        plots_dir = exp_dir / args.save_folder
-        plots_dir.mkdir(exist_ok=True)
-        _ = _plot_loss_history(
-            experiment_dir=exp_dir,
-            metric_name="Binary Cross Entropy",
-            metric_unit="1",
-            save_file=(plots_dir / "loss_history.png"),
-        )
-        _ = _plot_knn_valid_history(
-            experiment_dir=exp_dir,
-            model_names=("classifier",),
-            save_file=(plots_dir / "valid_history.png"),
-        )
+    for base_dir, is_ssl, exp_names in (
+        (args.ssl_pretrain_dir, True, args.ssl_exps),
+        (args.sup_pretrain_dir, False, args.sup_exps),
+    ):
+        if is_ssl:
+            models = ("student", "teacher")
+            metric_name = "Cross Entropy"
+            metric_unit = "nats"
+        else:
+            models = ("classifier",)
+            metric_name = "Binary Cross Entropy"
+            metric_unit = "1"
+        for exp_name in exp_names:
+            exp_dir = base_dir / exp_name
+            plots_dir = exp_dir / args.save_folder
+            plots_dir.mkdir(exist_ok=True)
+            _ = _plot_loss_history(
+                experiment_dir=exp_dir,
+                metric_name=metric_name,
+                metric_unit=metric_unit,
+                save_file=(plots_dir / "loss_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                save_file=(plots_dir / "valid_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                ks=[5, 10, 25],
+                metrics=["macro_accuracy", "weighted_accuracy"],
+                save_file=(plots_dir / "accuracy_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                ks=[5, 10, 25],
+                metrics=["macro_precision", "weighted_precision"],
+                save_file=(plots_dir / "precision_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                ks=[5, 10, 25],
+                metrics=["macro_sensitivity", "weighted_sensitivity"],
+                save_file=(plots_dir / "sensitivity_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                ks=[5, 10, 25],
+                metrics=["macro_specificity", "weighted_specificity"],
+                save_file=(plots_dir / "specificity_history.png"),
+            )
+            _ = _plot_knn_valid_history(
+                experiment_dir=exp_dir,
+                model_names=models,
+                ks=[5, 10, 25],
+                metrics=["macro_f1_score", "weighted_f1_score"],
+                save_file=(plots_dir / "f1_score_history.png"),
+            )
 
 
 def _run():
