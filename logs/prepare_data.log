@@ -1,29 +1,27 @@
 Classes in China_Drone source:
-  0 crack_interconnected
+  0 crack_alligator
   1 crack_longitudinal
   2 crack_transverse
   3 pothole
-  4 repair
-Train size: 1799 (74.93%)
+Train size: 1800 (74.97%)
   No   annotations: 0
-  With annotations: 1799
-Valid size: 229 ( 9.54%)
-Test  size: 373 (15.54%)
+  With annotations: 1800
+Valid size: 234 ( 9.75%)
+Test  size: 367 (15.29%)
 
 Classes in China_MotorBike source:
-  0 crack_interconnected
+  0 crack_alligator
   1 crack_longitudinal
   2 crack_transverse
   3 pothole
-  4 repair
-Train size: 1852 (74.77%)
+Train size: 1856 (74.93%)
   No   annotations: 500
-  With annotations: 1352
-Valid size: 235 ( 9.49%)
-Test  size: 390 (15.74%)
+  With annotations: 1356
+Valid size: 240 ( 9.69%)
+Test  size: 381 (15.38%)
 
 Classes in Czech source:
-  0 crack_interconnected
+  0 crack_alligator
   1 crack_longitudinal
   2 crack_transverse
   3 pothole
@@ -34,36 +32,29 @@ Valid size: 346 ( 9.78%)
 Test  size: 540 (15.26%)
 
 Classes in India source:
-  0 blur_crosswalk
-  1 blur_white_line
-  2 construction_joint
-  3 crack_interconnected
-  4 crack_longitudinal
-  5 crack_transverse
-  6 manhole
-  7 pothole
-Train size: 7237 (74.88%)
+  0 crack_alligator
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+Train size: 7248 (74.99%)
   No   annotations: 1959
-  With annotations: 5278
-Valid size: 947 ( 9.80%)
-Test  size: 1481 (15.32%)
+  With annotations: 5289
+Valid size: 959 ( 9.92%)
+Test  size: 1458 (15.09%)
 
 Classes in Japan source:
-  0 blur_crosswalk
-  1 blur_white_line
-  2 crack_interconnected
-  3 crack_longitudinal
-  4 crack_transverse
-  5 manhole
-  6 pothole
-Train size: 9839 (74.92%)
+  0 crack_alligator
+  1 crack_longitudinal
+  2 crack_transverse
+  3 pothole
+Train size: 9851 (75.01%)
   No   annotations: 2627
-  With annotations: 7212
-Valid size: 1269 ( 9.66%)
-Test  size: 2025 (15.42%)
+  With annotations: 7224
+Valid size: 1304 ( 9.93%)
+Test  size: 1978 (15.06%)
 
 Classes in Norway source:
-  0 crack_interconnected
+  0 crack_alligator
   1 crack_longitudinal
   2 crack_transverse
   3 pothole
@@ -74,7 +65,7 @@ Valid size: 1012 ( 9.92%)
 Test  size: 1539 (15.09%)
 
 Classes in United_States source:
-  0 crack_interconnected
+  0 crack_alligator
   1 crack_longitudinal
   2 crack_transverse
   3 pothole
