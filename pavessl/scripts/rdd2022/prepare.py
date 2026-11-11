@@ -11,39 +11,32 @@ CLASS_RENAME_MAP = {
     "D00": "crack_longitudinal",
     "D0w0": "crack_longitudinal",
     "D10": "crack_transverse",
-    "D20": "crack_interconnected",
+    "D20": "crack_alligator",
     "D40": "pothole",
-    "Block crack": "crack_interconnected",
-    "Repair": "repair",
-    "D01": "construction_joint",  # longitudinal
-    "D11": "construction_joint",  # transverse
-    "D50": "manhole",
-    "D43": "blur_crosswalk",
-    "D44": "blur_white_line",
 }
 
-NORWAY_TARGET_SIZE = 2000
 
-
-# To cut Norway images
-def _cut_image_and_fix_bboxes(img, bboxes):
-    img_height = img.size[1]
-    diff = img_height - NORWAY_TARGET_SIZE
-    cut_bboxes = []
-    for class_name, xmin, ymin, xmax, ymax in bboxes:
-        # Discard bboxes outside image crop
-        if xmin >= NORWAY_TARGET_SIZE or ymax <= diff:
+def _crop_bboxes(bboxes, coords):
+    cropped_bboxes = []
+    for class_name, x1, y1, x2, y2 in bboxes:
+        x1 = max(coords[0], x1) - coords[0]
+        y1 = max(coords[1], y1) - coords[1]
+        x2 = min(coords[2], x2) - coords[0]
+        y2 = min(coords[3], y2) - coords[1]
+        if x1 >= x2 or y1 >= y2:
             continue
-        cut_bboxes.append(
-            (
-                class_name,
-                xmin,
-                max(0, ymin - diff),
-                min(NORWAY_TARGET_SIZE, xmax),
-                ymax - diff,
-            )
-        )
-    return img.crop((0, diff, NORWAY_TARGET_SIZE, img_height)), cut_bboxes
+        cropped_bboxes.append((class_name, x1, y1, x2, y2))
+    return cropped_bboxes
+
+
+def _preprocess_norway_data(img, bboxes):
+    height = img.size[1]
+    lft_crop = (0, height - 1000, 1000, height)
+    rgt_crop = (1000, height - 1000, 2000, height)
+    return (
+        (img.crop(lft_crop), _crop_bboxes(bboxes, lft_crop)),
+        (img.crop(rgt_crop), _crop_bboxes(bboxes, rgt_crop)),
+    )
 
 
 def get_bboxes_from_xml_label(
@@ -65,7 +58,10 @@ def get_bboxes_from_xml_label(
         except TypeError:
             continue
         if class_name_map is not None:
-            class_name = class_name_map[class_name]
+            try:
+                class_name = class_name_map[class_name]
+            except KeyError:
+                continue
         bboxes.append((class_name, xmin, ymin, xmax, ymax))
     return bboxes
 
@@ -215,22 +211,44 @@ def _main(args):
                 else get_bboxes_from_xml_label(label_path, CLASS_RENAME_MAP)
             )
             if source_folder.name == "Norway":
-                img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
-            img.save(dst_folder / f"train/images/{img_path.name}")
-            if label_path is None:
+                processed = _preprocess_norway_data(img, bboxes)
+                for i, (img_crop, cropped_bboxes) in enumerate(processed):
+                    crop_name = f"{img_path.stem}_{i}"
+                    img_crop.save(
+                        dst_folder / f"train/images/{crop_name}{img_path.suffix}"
+                    )
+                    if label_path is not None:
+                        _save_bboxes_to_annotation(
+                            cropped_bboxes,
+                            dst_folder / f"train/annotations/{crop_name}.txt",
+                            classes,
+                        )
                 continue
-            ann_dst = dst_folder / f"train/annotations/{label_path.stem}.txt"
-            _save_bboxes_to_annotation(bboxes, ann_dst, classes)
+            img.save(dst_folder / f"train/images/{img_path.name}")
+            if label_path is not None:
+                ann_dst = dst_folder / f"train/annotations/{img_path.stem}.txt"
+                _save_bboxes_to_annotation(bboxes, ann_dst, classes)
         for split, pairs in (("valid", valid_split), ("test", test_split)):
             for img_path, label_path in pairs:
                 img = Image.open(img_path)
                 bboxes = get_bboxes_from_xml_label(label_path, CLASS_RENAME_MAP)
                 if source_folder.name == "Norway":
-                    img, bboxes = _cut_image_and_fix_bboxes(img, bboxes)
+                    processed = _preprocess_norway_data(img, bboxes)
+                    for i, (img_crop, cropped_bboxes) in enumerate(processed):
+                        crop_name = f"{img_path.stem}_{i}"
+                        img_crop.save(
+                            dst_folder / f"train/images/{crop_name}{img_path.suffix}"
+                        )
+                        _save_bboxes_to_annotation(
+                            cropped_bboxes,
+                            dst_folder / f"train/annotations/{crop_name}.txt",
+                            classes,
+                        )
+                    continue
                 img.save(dst_folder / f"{split}/images/{img_path.name}")
                 _save_bboxes_to_annotation(
                     bboxes,
-                    dst_folder / f"{split}/annotations/{label_path.stem}.txt",
+                    dst_folder / f"{split}/annotations/{img_path.stem}.txt",
                     classes,
                 )
 
