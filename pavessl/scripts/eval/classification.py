@@ -482,9 +482,9 @@ def _get_args_parser():
         save_dir_default="data/results/classification",
         save_folder_default="default",
         sources_subset_default=0,
-        epochs_default=100,
+        epochs_default=150,
         batch_size_default=16,
-        weight_decay_default=0.05,
+        weight_decay_default=0.01,
         weight_decay_end_default=0.4,
     )
     parser.add_argument(
@@ -497,7 +497,7 @@ def _get_args_parser():
     parser.add_argument(
         "--eval-num-layers",
         type=int,
-        default=4,
+        default=3,
         help="Number of linear layers in the classification head network.",
     )
     parser.add_argument(
@@ -509,7 +509,7 @@ def _get_args_parser():
     parser.add_argument(
         "--freeze",
         type=int,
-        default=10,
+        default=15,
         help="Freeze backbone parameters for N epochs.",
     )
     return parser
