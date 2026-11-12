@@ -118,14 +118,6 @@ def _get_stratified_splits(
     return train_pairs, valid_pairs, test_pairs
 
 
-def _get_available_classes(img_ann_pairs: tuple[Path, Path]):
-    classes = set()
-    for _, ann in img_ann_pairs:
-        bboxes = get_bboxes_from_xml_label(ann, CLASS_RENAME_MAP)
-        classes.update(cls_name for cls_name, *_ in bboxes)
-    return sorted(classes)
-
-
 def _train_valid_test_split(
     source_folder: Path,
     train_proportion: float,
@@ -138,7 +130,6 @@ def _train_valid_test_split(
     ):
         raise ValueError("Invalid proportions")
     train_samples, test_samples = _get_train_test_samples(source_folder)
-    classes = _get_available_classes(train_samples)
     total_samples = len(train_samples) + len(test_samples)
     test_size = ceil(
         total_samples * (1.0 - train_proportion - valid_proportion)
@@ -161,7 +152,7 @@ def _train_valid_test_split(
         test_size,
     )
     train_split.extend(inc_train)
-    return classes, train_split, valid_split, test_split
+    return train_split, valid_split, test_split
 
 
 def _prepare_dst_folder(dest_folder: Path):
@@ -174,35 +165,28 @@ def _prepare_dst_folder(dest_folder: Path):
 
 
 def _main(args):
+    classes = sorted(CLASS_RENAME_MAP.values())
     args.save_dir.mkdir(exist_ok=True, parents=True)
+    (args.save_dir / "classes.txt").write_text("\n".join(classes))
     for source_folder in sorted(args.data.iterdir()):
         dst_folder = args.save_dir / source_folder.name
         _prepare_dst_folder(dst_folder)
-        classes, train_split, valid_split, test_split = _train_valid_test_split(
+        train_split, valid_split, test_split = _train_valid_test_split(
             source_folder,
             args.train_prop,
             args.valid_prop,
         )
-        print(f"Classes in {source_folder.name} source:")
-        print(
-            "\n".join(
-                [
-                    f"  {cls_idx} {cls_name}"
-                    for cls_idx, cls_name in enumerate(classes)
-                ]
-            )
-        )
-        (dst_folder / "classes.txt").write_text("\n".join(classes))
         total_samples = len(train_split) + len(valid_split) + len(test_split)
         train_prop = 100 * len(train_split) / total_samples
         valid_prop = 100 * len(valid_split) / total_samples
         test_prop = 100 - train_prop - valid_prop
         no_annotations = sum(1 for _, ann in train_split if ann is None)
-        print(f"Train size: {len(train_split)} ({train_prop:5.2f}%)")
-        print(f"  No   annotations: {no_annotations}")
-        print(f"  With annotations: {len(train_split) - no_annotations}")
-        print(f"Valid size: {len(valid_split)} ({valid_prop:5.2f}%)")
-        print(f"Test  size: {len(test_split)} ({test_prop:5.2f}%)", end="\n\n")
+        print(f"{source_folder.name} source")
+        print(f"  Train size: {len(train_split)} ({train_prop:.1f}%)")
+        print(f"    No   annotations: {no_annotations}")
+        print(f"    With annotations: {len(train_split) - no_annotations}")
+        print(f"  Valid size: {len(valid_split)} ({valid_prop:.1f}%)")
+        print(f"  Test  size: {len(test_split)} ({test_prop:.1f}%)", end="\n\n")
         for img_path, label_path in train_split:
             img = Image.open(img_path)
             bboxes = (
