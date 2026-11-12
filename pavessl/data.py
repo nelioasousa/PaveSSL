@@ -222,7 +222,7 @@ class SourcesSampler(Sampler[list[tuple[str, int]]]):
 
 
 class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
-    _bottom_threshold = 0.6
+    _bottom_threshold = 0.5
 
     def make_params(self, flat_inputs):
         h, _ = transforms_v2.query_size(flat_inputs)
