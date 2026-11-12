@@ -104,7 +104,7 @@ class RDD2022(Dataset):
         )
 
     def _compute_weights(self):
-        classes_count = torch.zeros(len(self.classes))
+        classes_count = torch.zeros(len(self.classes), dtype=torch.float32)
         for source in self.sources:
             source_dir = self.sources_base_dir[source]
             for image_name in self.images[source]:
@@ -194,7 +194,7 @@ class SourcesSampler(Sampler[list[tuple[str, int]]]):
         self._total_batches = min(self.counts) // self.images_per_source
         self._current_batch = self._total_batches
         self._indexes = tuple(
-            np.arange(count, dtype=np.int32) for count in self.counts
+            np.arange(count, dtype=np.long) for count in self.counts
         )
 
     def __len__(self):
