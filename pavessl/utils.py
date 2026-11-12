@@ -268,10 +268,10 @@ def add_training_args(
     lr_default: float = 1e-3,
     lr_end_default: float = 1e-6,
     lr_warmup_size_default: int = 10,
-    weight_decay_default: float = 0.01,
-    weight_decay_end_default: float = 0.1,
+    weight_decay_default: float = 0.05,
+    weight_decay_end_default: float = 0.5,
     optim_default: Literal["adamw", "sgd"] = "adamw",
-    checkpoint_freq_default: int = 25,
+    checkpoint_freq_default: int = 50,
 ) -> argparse.ArgumentParser:
     parser.add_argument(
         "--save-dir",
