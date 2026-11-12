@@ -104,16 +104,19 @@ class RDD2022(Dataset):
         )
 
     def _compute_weights(self):
-        classes_count = torch.zeros(len(self.classes), dtype=torch.float32)
+        classes_count = torch.zeros((1, len(self.classes)), dtype=torch.float32)
         for source in self.sources:
             source_dir = self.sources_base_dir[source]
             for image_name in self.images[source]:
                 ann_path = f"{source_dir}/annotations/{image_name[:-3]}txt"
-                indexes = frozenset(load_bboxes(ann_path)["labels"])
                 classes_count.add_(
-                    torch.tensor(
-                        [i in indexes for i in range(len(self.classes))],
-                        dtype=classes_count.dtype,
+                    torch.zeros_like(classes_count).index_fill_(
+                        dim=1,
+                        index=torch.tensor(
+                            load_bboxes(ann_path)["labels"],
+                            dtype=torch.long,
+                        ),
+                        value=1.0,
                     )
                 )
         return {
@@ -131,16 +134,17 @@ class RDD2022(Dataset):
         raise IndexError("Out of range")
 
     def _load_classification_label(self, annotation_path):
-        indexes = frozenset(load_bboxes(annotation_path)["labels"])
-        label = {
-            "target": torch.tensor(
-                [i in indexes for i in range(len(self.classes))],
-                dtype=torch.float32,
-            ),
+        multihot = torch.zeros(len(self.classes), dtype=torch.float32)
+        return {
+            "target": multihot.index_fill_(
+                dim=0,
+                index=torch.tensor(
+                    load_bboxes(annotation_path)["labels"],
+                    dtype=torch.long,
+                ),
+                value=1.0,
+            )
         }
-        if self.weights is not None:
-            label.update(self.weights)
-        return label
 
     def _load_detection_label(self, annotation_path, img_dim):
         bboxes = load_bboxes(annotation_path)

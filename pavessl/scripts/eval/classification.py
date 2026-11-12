@@ -209,17 +209,20 @@ def _train_one_epoch(
     epoch_str = str(epoch + 1).rjust(len(str(num_epochs)), "0")
     header = f"(Train) Epoch: [{epoch_str}/{num_epochs}]"
     log_every = max(5, 5 * len(data_loader) // (5 * 20))
+    pos_weights = data_loader.dataset.weights["pos_weights"]
+    pos_weights = pos_weights.to(device=device, non_blocking=True)
+    neg_weights = data_loader.dataset.weights["neg_weights"]
+    neg_weights = neg_weights.to(device=device, non_blocking=True)
     for it, (images, labels) in enumerate(
         metric_logger.log_every(data_loader, log_every, header)
     ):
         images = images.to(device=device, non_blocking=True)
         targets = labels["target"].to(device=device, non_blocking=True)
         classes_weights = torch.where(
-            labels["target"] > 0,
-            labels["pos_weights"],
-            labels["neg_weights"],
+            targets > 0,
+            pos_weights,
+            neg_weights,
         )
-        classes_weights = classes_weights.to(device=device, non_blocking=True)
         classes_weights.div_(classes_weights.sum(dim=-1, keepdim=True))
         # Only the first group is regularized
         it = len(data_loader) * epoch + it
