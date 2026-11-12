@@ -1,17 +1,21 @@
-from argparse import ArgumentParser
+import argparse
 from pathlib import Path
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import torchvision
+from torchvision.transforms.v2 import Resize
 from torch.utils.data import DataLoader, Dataset
 
-from pavessl import models, utils
+from pavessl import data, models, utils
 
 
-def add_eval_args(parser: ArgumentParser) -> ArgumentParser:
+def add_eval_args(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
     parser.add_argument("-d", "--experiment-dir", type=Path)
     parser.add_argument("-k", "--checkpoint-key", type=str)
     parser.add_argument(
@@ -322,3 +326,231 @@ def compute_features_and_labels(
             labels[key][start:end].copy_(batch_labels[key])
     features.div_(torch.linalg.vector_norm(features, dim=-1, keepdims=True))
     return features, labels
+
+
+def _get_features_similarities_and_targets(
+    model: torch.nn.Module,
+    data_path: Path,
+    target_source: str,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
+    pin_memory: bool = False,
+    header: str = "",
+):
+    transform = Resize(size=image_size)
+    dataset = data.RDD2022(
+        data_path=data_path,
+        sources=target_source,
+        split=ref_split,
+        task="classification",
+        transform=transform,
+    )
+    classes = dataset.classes
+    ref_features, ref_labels = compute_features_and_labels(
+        model=model,
+        dataset=dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        target_label_keys=["target"],
+        pin_memory=pin_memory,
+        header=(
+            f"{header}{' ' if header else ''}"
+            f"[{target_source}: {ref_split} split]"
+        ),
+    )
+    eval_features, eval_labels = compute_features_and_labels(
+        model=model,
+        dataset=data.RDD2022(
+            data_path=data_path,
+            sources=target_source,
+            split=eval_split,
+            task="classification",
+            transform=transform,
+        ),
+        batch_size=batch_size,
+        num_workers=num_workers,
+        target_label_keys=["target"],
+        pin_memory=pin_memory,
+        header=(
+            f"{header}{' ' if header else ''}"
+            f"[{target_source}: {eval_split} split]"
+        ),
+    )
+    similarities = torch.mm(eval_features, ref_features.t())
+    return classes, similarities, ref_labels["target"], eval_labels["target"]
+
+
+@torch.inference_mode()
+def knn_eval_one(
+    model: torch.nn.Module,
+    data_path: Path,
+    target_source: str,
+    ks: list[int],
+    distance_temperature: float,
+    pred_threshold: float,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
+    as_dataframe: bool = False,
+    pin_memory: bool = False,
+    logging_header: str = "",
+) -> list[pd.DataFrame] | list[dict[str, float | list[float] | list[int]]]:
+    max_k = max(ks)
+    classes, *sim_and_targets = _get_features_similarities_and_targets(
+        model=model,
+        data_path=data_path,
+        target_source=target_source,
+        image_size=image_size,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        ref_split=ref_split,
+        eval_split=eval_split,
+        pin_memory=pin_memory,
+        header=logging_header,
+    )
+    similarities, ref_targets, eval_targets = sim_and_targets
+    similarities, idxs = similarities.topk(
+        k=max_k,
+        dim=-1,
+        largest=True,
+        sorted=True,
+    )
+    closest_targets = ref_targets.new_empty((*eval_targets.shape, max_k))
+    for i in range(max_k):
+        closest_targets[..., i].copy_(ref_targets[idxs[:, i]])
+    similarities.div_(distance_temperature).exp_().unsqueeze_(dim=1)
+    closest_targets.mul_(similarities)
+    results = []
+    for i, k_value in enumerate(ks):
+        probs = closest_targets[..., :k_value].sum(dim=-1)
+        probs.div_(similarities[..., :k_value].sum(dim=-1))
+        preds = torch.where(probs > pred_threshold, 1.0, 0.0)
+        results.append(
+            multi_value_classification_metrics(
+                preds=preds.cpu().numpy(),
+                targets=eval_targets.cpu().numpy(),
+                classes=(classes if as_dataframe else None),
+            )
+        )
+    return results
+
+
+def knn_eval_all(
+    model: torch.nn.Module,
+    data_path: Path,
+    target_sources: list[str],
+    ks: list[int],
+    distance_temperature: float,
+    pred_threshold: float,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    ref_split: Literal["train", "valid", "test"] = "train",
+    eval_split: Literal["train", "valid", "test"] = "valid",
+    as_dataframe: bool = False,
+    pin_memory: bool = False,
+    logging_header: str = "",
+) -> (
+    dict[str, list[pd.DataFrame]]
+    | dict[str, list[dict[str, float | list[float] | list[int]]]]
+):
+    return {
+        source: knn_eval_one(
+            model=model,
+            data_path=data_path,
+            target_source=source,
+            ks=ks,
+            distance_temperature=distance_temperature,
+            pred_threshold=pred_threshold,
+            image_size=image_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            ref_split=ref_split,
+            eval_split=eval_split,
+            as_dataframe=as_dataframe,
+            pin_memory=pin_memory,
+            logging_header=logging_header,
+        )
+        for source in target_sources
+    }
+
+
+def add_knn_eval_args(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--knn-ks",
+        type=int,
+        nargs="+",
+        default=[5, 10, 25, 50],
+        help="Number of neighbours to use in kNN evalatuation.",
+    )
+    parser.add_argument(
+        "--knn-dist-temperature",
+        type=float,
+        default=0.07,
+        help=(
+            "Sharpening constant for samples' distance weighting. "
+            "Smaller values give more importance to closest samples."
+        ),
+    )
+    parser.add_argument(
+        "--knn-pred-threshold",
+        type=float,
+        default=0.3,
+        help="Threshold for kNN prediction.",
+    )
+    parser.add_argument(
+        "--knn-batch-size",
+        type=int,
+        default=32,
+        help="Batch size for kNN evaluation.",
+    )
+    return parser
+
+
+def backbone_knn_eval(
+    backbone: torch.nn.Module,
+    data_path: Path,
+    target_sources: list[str],
+    ks: list[int],
+    distance_temperature: float,
+    pred_threshold: float,
+    image_size: int,
+    batch_size: int,
+    num_workers: int,
+    pin_memory: bool = False,
+    logging_header: str = "",
+) -> dict[str, list[dict[str, float]]]:
+    backbone.eval()
+    results = knn_eval_all(
+        model=backbone,
+        data_path=data_path,
+        target_sources=target_sources,
+        ks=ks,
+        distance_temperature=distance_temperature,
+        pred_threshold=pred_threshold,
+        image_size=image_size,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        ref_split="train",
+        eval_split="valid",
+        pin_memory=pin_memory,
+        logging_header=logging_header,
+    )
+    return {
+        source: [
+            {
+                metric: value
+                for metric, value in k_metrics.items()
+                if isinstance(value, float)
+            }
+            for k_metrics in metrics_per_k
+        ]
+        for source, metrics_per_k in results.items()
+    }

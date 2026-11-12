@@ -10,8 +10,8 @@ from torchvision.transforms.v2 import Resize
 
 from pavessl import TUNE_SIZE, models, utils
 from pavessl.data import RDD2022, get_augmentation
-from pavessl.scripts.eval import eval_utils
-from pavessl.scripts.pretrain import pretrain_utils
+import pavessl.scripts.eval.utils as eval_utils
+from pavessl.scripts.pretrain.utils import check_run
 from pavessl.scripts.utils.plot_results import (
     plot_loss_history,
     plot_valid_history,
@@ -296,7 +296,7 @@ def _save_and_plot_histories(
 def _main(args):
     device = utils.get_device()
     # Check run
-    stored_args = pretrain_utils.check_run(args)
+    stored_args = check_run(args)
     if args is not stored_args:
         print(
             "Run arguments restored.\n"

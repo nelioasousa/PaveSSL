@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 
 from pavessl import GLOBAL_SCALE, GLOBAL_SIZE, models, utils
 from pavessl.data import RDD2022, get_augmentation
-from pavessl.scripts.eval.knn_eval import add_knn_eval_args
-from pavessl.scripts.pretrain import pretrain_utils
+import pavessl.scripts.eval.utils as eval_utils
+from pavessl.scripts.pretrain.utils import check_run
 
 
 def _get_train_data_loader(args):
@@ -126,7 +126,7 @@ def _train_one_epoch(
 def _pretrain(args):
     device = utils.get_device()
     # Check run
-    stored_args = pretrain_utils.check_run(args)
+    stored_args = check_run(args)
     if args is not stored_args:
         print(
             "Run arguments restored.\n"
@@ -208,7 +208,7 @@ def _pretrain(args):
         ]
         # Run validation
         eval_start = time.monotonic()
-        classifier_eval = pretrain_utils.backbone_knn_eval(
+        classifier_eval = eval_utils.backbone_knn_eval(
             backbone=classifier.backbone,
             data_path=args.data,
             target_sources=args.sources,
@@ -301,7 +301,7 @@ def _get_args_parser():
         save_dir_default="data/results/sup_pretrain",
         save_folder_default="test",
     )
-    parser = add_knn_eval_args(parser)
+    parser = eval_utils.add_knn_eval_args(parser)
     return parser
 
 

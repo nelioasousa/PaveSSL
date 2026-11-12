@@ -16,8 +16,8 @@ from pavessl import (
     utils,
 )
 from pavessl.data import RDD2022, SSLMultiviewTransform
-from pavessl.scripts.eval.knn_eval import add_knn_eval_args
-from pavessl.scripts.pretrain import pretrain_utils
+import pavessl.scripts.eval.utils as eval_utils
+from pavessl.scripts.pretrain.utils import check_run
 
 
 def _get_models(device, args):
@@ -171,7 +171,7 @@ def _train_one_epoch(
 def _pretrain(args):
     device = utils.get_device()
     # Check run
-    stored_args = pretrain_utils.check_run(args)
+    stored_args = check_run(args)
     if args is not stored_args:
         print(
             "Run arguments restored.\n"
@@ -256,7 +256,7 @@ def _pretrain(args):
         ]
         # Run validation
         eval_start = time.monotonic()
-        student_eval = pretrain_utils.backbone_knn_eval(
+        student_eval = eval_utils.backbone_knn_eval(
             backbone=student.backbone,
             data_path=args.data,
             target_sources=args.sources,
@@ -269,7 +269,7 @@ def _pretrain(args):
             pin_memory=args.pin,
             logging_header="(Eval/Student)",
         )
-        teacher_eval = pretrain_utils.backbone_knn_eval(
+        teacher_eval = eval_utils.backbone_knn_eval(
             backbone=teacher.backbone,
             data_path=args.data,
             target_sources=args.sources,
@@ -433,7 +433,7 @@ def _get_args_parser():
         default=0.02,
         help="Start value for the teacher softmax sharpening constant warmup.",
     )
-    parser = add_knn_eval_args(parser)
+    parser = eval_utils.add_knn_eval_args(parser)
     return parser
 
 
