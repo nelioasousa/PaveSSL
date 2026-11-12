@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms.v2 import Resize
 
-from pavessl import TUNE_SCALE, TUNE_SIZE, models, utils
+from pavessl import TUNE_SIZE, models, utils
 from pavessl.data import RDD2022, get_augmentation
 from pavessl.scripts.eval import eval_utils
 from pavessl.scripts.pretrain import pretrain_utils
@@ -115,7 +115,7 @@ def _get_data(args):
             sources=args.eval_source,
             split="train",
             task="classification",
-            transform=get_augmentation(TUNE_SIZE, TUNE_SCALE, stronger=False),
+            transform=get_augmentation(TUNE_SIZE, stronger=False),
         ),
         batch_size=args.batch_size,
         num_workers=args.num_workers,

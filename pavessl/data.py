@@ -241,7 +241,7 @@ class BottomRandomResizedCrop(transforms_v2.RandomResizedCrop):
 
 def get_augmentation(
     size: int,
-    scale: tuple[float, float],
+    scale: tuple[float, float] | None = None,
     stronger: bool = True,
 ) -> transforms_v2.Transform:
     # Photometric transformations
@@ -263,7 +263,7 @@ def get_augmentation(
     ]
     if stronger:
         photometric_transforms.append(
-            transforms_v2.RandomSolarize(threshold=0.85, p=0.25),
+            transforms_v2.RandomSolarize(threshold=0.8, p=0.25),
         )
     photometric_transforms.extend(
         [
@@ -275,9 +275,13 @@ def get_augmentation(
         ],
     )
     # Augmentations composition
+    if scale is None:
+        resize = transforms_v2.Resize(size)
+    else:
+        resize = BottomRandomResizedCrop(size, scale)
     augmentations = transforms_v2.Compose(
         [
-            BottomRandomResizedCrop(size, scale),
+            resize,
             transforms_v2.RandomHorizontalFlip(p=0.5),
             *photometric_transforms,
         ]
