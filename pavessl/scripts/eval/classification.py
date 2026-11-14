@@ -140,7 +140,7 @@ def _get_classifier(num_classes, device, args):
         args.eval_hidden_dim,
     )
     classifier = models.build_classification_network(
-        network_state_path=state_filename,
+        network_state_path=(args.start_points_dir / state_filename),
         num_classes=num_classes,
         head_num_layers=args.eval_num_layers,
         head_hidden_dim=args.eval_hidden_dim,
