@@ -98,10 +98,14 @@ class RDD2022(Dataset):
         self.counts = [len(self.images[source]) for source in sources]
         self.acc_counts = list(accumulate(self.counts))
         self.acc_counts.insert(0, 0)
-        self.weights = (
-            None if self.task != "classification" or self.split != "train"
-            else self._compute_weights()
-        )
+
+    @property
+    def weights(self):
+        try:
+            return self._weights
+        except AttributeError:
+            self._weights = self._compute_weights()
+            return self._weights
 
     def _compute_weights(self):
         classes_count = torch.zeros((1, len(self.classes)), dtype=torch.float32)
