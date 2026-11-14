@@ -135,39 +135,21 @@ def _get_data(args):
 
 
 def _get_classifier(num_classes, device, args):
-    if args.experiment_dir is None:
-        backbone = models.build_backbone(
-            args.start_points_dir / "resnet50_backbone.pth"
-        )
-    else:
-        backbone = eval_utils.load_experiment_backbone(
-            experiment_dir=args.experiment_dir,
-            checkpoint_key=args.checkpoint_key,
-        )
-    classifier = models.ClassificationNetwork(
-        backbone=backbone,
+    state_filename = "classific_eval_{}L{}D.pth".format(
+        args.eval_num_layers,
+        args.eval_hidden_dim,
+    )
+    classifier = models.build_classification_network(
+        network_state_path=state_filename,
         num_classes=num_classes,
         head_num_layers=args.eval_num_layers,
         head_hidden_dim=args.eval_hidden_dim,
     )
-    head_state_path = args.start_points_dir / (
-        "{}l_{}d_{}_linear_head.pth".format(
-            args.eval_num_layers,
-            args.eval_hidden_dim,
-            args.eval_source,
+    if args.experiment_dir is not None:
+        classifier.backbone = eval_utils.load_experiment_backbone(
+            experiment_dir=args.experiment_dir,
+            checkpoint_key=args.checkpoint_key,
         )
-    )
-    if head_state_path.is_file():
-        classifier.head.load_state_dict(
-            state_dict=torch.load(
-                f=head_state_path,
-                map_location="cpu",
-                weights_only=True,
-            ),
-            strict=True,
-        )
-    else:
-        torch.save(classifier.head.state_dict(), head_state_path)
     # Freeze backbone during the whole training
     # Setting requires_grad here will prevent the...
     # ...parameters from being added to the optimizer
@@ -177,8 +159,8 @@ def _get_classifier(num_classes, device, args):
     backbone_nparams = utils.get_num_parameters(classifier.backbone)
     classifier_nparams = utils.get_num_parameters(classifier)
     print(f"Backbone # params: {backbone_nparams:,d}")
-    print(f"Network  # params: {classifier_nparams:,d}")
     print(f"Head     # params: {(classifier_nparams - backbone_nparams):,d}")
+    print(f"Network  # params: {classifier_nparams:,d}")
     return classifier.to(device=device, non_blocking=True)
 
 

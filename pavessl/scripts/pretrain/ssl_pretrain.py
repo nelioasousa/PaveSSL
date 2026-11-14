@@ -22,10 +22,9 @@ from pavessl.scripts.pretrain.utils import check_run
 
 def _get_models(device, args):
     # Student network
-    state_filename = f"ssl_student_{args.ssl_projection_dim}d_net.pth"
     student = models.build_projection_network(
         network_cls=models.DualHeadProjectionNetwork,
-        network_state_path=(args.start_points_dir / state_filename),
+        network_state_path=(args.start_points_dir / "ssl_student_net.pth"),
         backbone_state_path=(args.start_points_dir / "resnet50_backbone.pth"),
         projection_dim=args.ssl_projection_dim,
     )
